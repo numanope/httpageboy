@@ -46,6 +46,9 @@ pub struct GenericServer<L> {
   pub routes: Arc<HashMap<(Rt, String), Rh>>,
   pub files_sources: Arc<Vec<String>>,
   pub auto_close: bool,
+  pub body_read_limit_bytes: u64,
+  pub body_read_timeout_ms: u64,
+  pub strict_content_length: bool,
 }
 
 impl<L> GenericServer<L> {
@@ -67,5 +70,20 @@ impl<L> GenericServer<L> {
     S: Into<String>,
   {
     Arc::get_mut(&mut self.files_sources).unwrap().push(base.into());
+  }
+
+  pub fn with_body_read_limit(mut self, limit_bytes: u64) -> Self {
+    self.body_read_limit_bytes = limit_bytes;
+    self
+  }
+
+  pub fn with_body_read_timeout(mut self, timeout_ms: u64) -> Self {
+    self.body_read_timeout_ms = timeout_ms;
+    self
+  }
+
+  pub fn with_strict_content_length(mut self, strict: bool) -> Self {
+    self.strict_content_length = strict;
+    self
   }
 }

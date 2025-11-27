@@ -17,6 +17,9 @@ macro_rules! create_async_parse_stream {
             stream: &mut $stream_ty,
             routes: &std::collections::HashMap<(crate::core::request_type::Rt, String), crate::core::request_handler::Rh>,
             file_bases: &[String],
+            body_read_limit_bytes: u64,
+            body_read_timeout_ms: u64,
+            strict_content_length: bool,
         ) -> (crate::core::request::Request, Option<crate::core::response::Response>) {
             use $async_read_ext;
             use $async_buf_read_ext;
@@ -43,17 +46,7 @@ macro_rules! create_async_parse_stream {
                 .and_then(|l| l.split_whitespace().next())
                 .unwrap_or("");
 
-            // Determine content length
-            let content_length = raw
-                .lines()
-                .find_map(|l| {
-                    if l.to_ascii_lowercase().starts_with("content-length:") {
-                        l.split(':').nth(1)?.trim().parse::<usize>().ok()
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(0);
+            let (content_length, has_transfer_encoding) = crate::core::request::extract_body_headers(&raw);
 
             // Read declared body size, or attempt a bounded read to avoid hanging on keep-alive with no Content-Length.
             if content_length > 0 {
@@ -62,13 +55,25 @@ macro_rules! create_async_parse_stream {
                 let _ = reader.read_exact(&mut buf).await;
                 raw.push_str(&String::from_utf8_lossy(&buf));
             } else if method != "GET" {
+                if strict_content_length && !has_transfer_encoding {
+                    return (
+                        crate::core::request::Request::default(),
+                        Some(crate::core::response::Response {
+                            status: crate::core::status_code::StatusCode::LengthRequired.to_string(),
+                            content_type: String::new(),
+                            content: Vec::new(),
+                        }),
+                    );
+                }
+
                 let mut rest = String::new();
 
                 #[cfg(feature = "async_tokio")]
                 {
                     use std::time::Duration;
-                    let read_fut = reader.read_to_string(&mut rest);
-                    let sleep = tokio::time::sleep(Duration::from_millis(200));
+                    let mut limited = reader.take(body_read_limit_bytes);
+                    let read_fut = limited.read_to_string(&mut rest);
+                    let sleep = tokio::time::sleep(Duration::from_millis(body_read_timeout_ms));
                     futures::pin_mut!(read_fut, sleep);
                     if matches!(
                         futures::future::select(read_fut, sleep).await,
@@ -81,8 +86,9 @@ macro_rules! create_async_parse_stream {
                 #[cfg(all(feature = "async_std", not(feature = "async_tokio")))]
                 {
                     use std::time::Duration;
-                    let read_fut = reader.read_to_string(&mut rest);
-                    let sleep = async_std::task::sleep(Duration::from_millis(200));
+                    let mut limited = reader.take(body_read_limit_bytes);
+                    let read_fut = limited.read_to_string(&mut rest);
+                    let sleep = async_std::task::sleep(Duration::from_millis(body_read_timeout_ms));
                     futures::pin_mut!(read_fut, sleep);
                     if matches!(
                         futures::future::select(read_fut, sleep).await,
@@ -95,8 +101,9 @@ macro_rules! create_async_parse_stream {
                 #[cfg(all(feature = "async_smol", not(any(feature = "async_tokio", feature = "async_std"))))]
                 {
                     use std::time::Duration;
-                    let read_fut = reader.read_to_string(&mut rest);
-                    let sleep = smol::Timer::after(Duration::from_millis(200));
+                    let mut limited = reader.take(body_read_limit_bytes);
+                    let read_fut = limited.read_to_string(&mut rest);
+                    let sleep = smol::Timer::after(Duration::from_millis(body_read_timeout_ms));
                     futures::pin_mut!(read_fut, sleep);
                     if matches!(
                         futures::future::select(read_fut, sleep).await,
@@ -110,6 +117,28 @@ macro_rules! create_async_parse_stream {
             crate::core::request::Request::parse_raw_async(raw, routes, file_bases).await
         }
     };
+}
+
+#[cfg(any(
+  feature = "sync",
+  feature = "async_tokio",
+  feature = "async_std",
+  feature = "async_smol"
+))]
+fn extract_body_headers(raw: &str) -> (usize, bool) {
+  let mut content_length = 0usize;
+  let mut has_transfer_encoding = false;
+  for line in raw.lines() {
+    let lower = line.to_ascii_lowercase();
+    if lower.starts_with("content-length:") {
+      if let Some(len) = line.split(':').nth(1).and_then(|v| v.trim().parse::<usize>().ok()) {
+        content_length = len;
+      }
+    } else if lower.starts_with("transfer-encoding:") {
+      has_transfer_encoding = true;
+    }
+  }
+  (content_length, has_transfer_encoding)
 }
 
 #[cfg(any(
@@ -238,8 +267,12 @@ impl Request {
     stream: &TcpStream,
     routes: &HashMap<(Rt, String), Rh>,
     file_bases: &[String],
+    body_read_limit_bytes: u64,
+    body_read_timeout_ms: u64,
+    strict_content_length: bool,
   ) -> (Self, Option<Response>) {
     use std::io::{BufRead, BufReader, Read};
+    use std::time::Duration;
 
     let mut reader = BufReader::new(stream);
     let mut raw = String::new();
@@ -263,17 +296,7 @@ impl Request {
       .and_then(|l| l.split_whitespace().next())
       .unwrap_or("");
 
-    // Determine length
-    let content_length = raw
-      .lines()
-      .find_map(|l| {
-        if l.to_ascii_lowercase().starts_with("content-length:") {
-          l.split(':').nth(1)?.trim().parse::<usize>().ok()
-        } else {
-          None
-        }
-      })
-      .unwrap_or(0);
+    let (content_length, has_transfer_encoding) = extract_body_headers(&raw);
 
     // Treat missing Content-Length as an empty body to avoid blocking on keep-alive.
     if content_length > 0 {
@@ -282,9 +305,19 @@ impl Request {
       let _ = reader.read_exact(&mut buf);
       raw.push_str(&String::from_utf8_lossy(&buf));
     } else if method != "GET" {
+      if strict_content_length && !has_transfer_encoding {
+        return (
+          Self::default(),
+          Some(Response {
+            status: StatusCode::LengthRequired.to_string(),
+            content_type: String::new(),
+            content: Vec::new(),
+          }),
+        );
+      }
       let mut rest = String::new();
-      let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(200)));
-      let _ = reader.read_to_string(&mut rest);
+      let _ = stream.set_read_timeout(Some(Duration::from_millis(body_read_timeout_ms)));
+      let _ = reader.take(body_read_limit_bytes).read_to_string(&mut rest);
       let _ = stream.set_read_timeout(None);
       raw.push_str(&rest);
     }

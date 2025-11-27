@@ -54,12 +54,30 @@ impl Server {
       routes: Arc::new(routes_list.unwrap_or_default()),
       files_sources: Arc::new(Vec::new()),
       auto_close: true,
+      body_read_limit_bytes: 512,
+      body_read_timeout_ms: 50,
+      strict_content_length: false,
     }))
   }
 
   /// Returns the socket address the server is currently bound to.
   pub fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> {
     self.listener.local_addr()
+  }
+
+  pub fn with_body_read_limit(mut self, limit_bytes: u64) -> Self {
+    self.0.body_read_limit_bytes = limit_bytes;
+    self
+  }
+
+  pub fn with_body_read_timeout(mut self, timeout_ms: u64) -> Self {
+    self.0.body_read_timeout_ms = timeout_ms;
+    self
+  }
+
+  pub fn with_strict_content_length(mut self, strict: bool) -> Self {
+    self.0.strict_content_length = strict;
+    self
   }
 
   /// Starts the server and begins accepting connections.
@@ -70,9 +88,20 @@ impl Server {
         let routes = self.routes.clone();
         let files = self.files_sources.clone();
         let close_flag = self.auto_close;
+        let body_limit = self.body_read_limit_bytes;
+        let body_timeout = self.body_read_timeout_ms;
+        let strict_content_length = self.strict_content_length;
 
         spawn(async move {
-          let (mut req, early) = crate::core::request::parse_stream_smol(&mut stream, &routes, &files).await;
+          let (mut req, early) = crate::core::request::parse_stream_smol(
+            &mut stream,
+            &routes,
+            &files,
+            body_limit,
+            body_timeout,
+            strict_content_length,
+          )
+          .await;
           let resp = match early {
             Some(r) => r,
             None => handle_request_async(&mut req, &routes, &files)
