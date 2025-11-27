@@ -10,11 +10,7 @@ pub use crate::core::{request_type::Rt, response::Response, status_code::StatusC
   feature = "async_std",
   feature = "async_smol"
 ))]
-pub use crate::core::{
-  handler::Handler,
-  request::Request,
-  request_handler::Rh,
-};
+pub use crate::core::{handler::Handler, request::Request, request_handler::Rh};
 
 pub mod runtime {
   #[cfg(feature = "sync")]
@@ -27,11 +23,11 @@ pub mod runtime {
   pub mod r#async {
     #[cfg(feature = "async_std")]
     pub mod async_std;
+    pub mod shared;
     #[cfg(feature = "async_smol")]
     pub mod smol;
     #[cfg(feature = "async_tokio")]
     pub mod tokio;
-    pub mod shared;
   }
 
   pub mod shared;

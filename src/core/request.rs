@@ -107,6 +107,8 @@ use crate::core::status_code::StatusCode;
   feature = "async_smol"
 ))]
 use std::collections::{BTreeMap, HashMap};
+#[cfg(feature = "sync")]
+use std::net::TcpStream;
 #[cfg(any(
   feature = "sync",
   feature = "async_tokio",
@@ -114,43 +116,41 @@ use std::collections::{BTreeMap, HashMap};
   feature = "async_smol"
 ))]
 use std::path::Path;
-#[cfg(feature = "sync")]
-use std::net::TcpStream;
 
-#[cfg(feature = "async_tokio")]
-use tokio;
 #[cfg(feature = "async_std")]
 use async_std;
 #[cfg(feature = "async_smol")]
 use futures_lite;
 #[cfg(feature = "async_smol")]
 use smol;
+#[cfg(feature = "async_tokio")]
+use tokio;
 
 create_async_parse_stream!(
-    #[cfg(feature = "async_tokio")]
-    parse_stream_tokio,
-    tokio::net::TcpStream,
-    tokio::io::BufReader<_>,
-    tokio::io::AsyncReadExt,
-    tokio::io::AsyncBufReadExt
+  #[cfg(feature = "async_tokio")]
+  parse_stream_tokio,
+  tokio::net::TcpStream,
+  tokio::io::BufReader<_>,
+  tokio::io::AsyncReadExt,
+  tokio::io::AsyncBufReadExt
 );
 
 create_async_parse_stream!(
-    #[cfg(feature = "async_std")]
-    parse_stream_async_std,
-    async_std::net::TcpStream,
-    async_std::io::BufReader<_>,
-    async_std::io::ReadExt,
-    async_std::io::BufReadExt
+  #[cfg(feature = "async_std")]
+  parse_stream_async_std,
+  async_std::net::TcpStream,
+  async_std::io::BufReader<_>,
+  async_std::io::ReadExt,
+  async_std::io::BufReadExt
 );
 
 create_async_parse_stream!(
-    #[cfg(feature = "async_smol")]
-    parse_stream_smol,
-    smol::net::TcpStream,
-    futures_lite::io::BufReader<_>,
-    futures_lite::io::AsyncReadExt,
-    futures_lite::io::AsyncBufReadExt
+  #[cfg(feature = "async_smol")]
+  parse_stream_smol,
+  smol::net::TcpStream,
+  futures_lite::io::BufReader<_>,
+  futures_lite::io::AsyncReadExt,
+  futures_lite::io::AsyncBufReadExt
 );
 
 #[cfg(any(
@@ -317,7 +317,7 @@ impl Request {
     (req, early)
   }
 
-#[cfg(any(feature = "async_tokio", feature = "async_std", feature = "async_smol"))]
+  #[cfg(any(feature = "async_tokio", feature = "async_std", feature = "async_smol"))]
   pub async fn parse_raw_async(
     raw: String,
     routes: &HashMap<(Rt, String), Rh>,
@@ -464,7 +464,7 @@ impl Request {
     None
   }
 
-#[cfg(any(feature = "async_tokio", feature = "async_std", feature = "async_smol"))]
+  #[cfg(any(feature = "async_tokio", feature = "async_std", feature = "async_smol"))]
   pub async fn route_async(&mut self, routes: &HashMap<(Rt, String), Rh>, file_bases: &[String]) -> Option<Response> {
     if let Some(rh) = routes.get(&(self.method.clone(), self.path.clone())) {
       return Some(rh.handler.handle(self).await);

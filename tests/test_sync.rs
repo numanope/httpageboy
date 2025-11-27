@@ -1,20 +1,16 @@
 #![cfg(feature = "sync")]
-use httpageboy::test_utils::{run_test, setup_test_server, POOL_SIZE, SERVER_URL};
-use httpageboy::{handler, Request, Response, Rt, Server, StatusCode};
+use httpageboy::test_utils::{POOL_SIZE, active_server_url, run_test, setup_test_server};
+use httpageboy::{Request, Response, Rt, Server, StatusCode, handler};
 use std::collections::BTreeMap;
 
 fn create_test_server() -> Server {
-  let mut server = Server::new(SERVER_URL, POOL_SIZE, None).unwrap();
+  let mut server = Server::new(active_server_url(), POOL_SIZE, None).unwrap();
 
   server.add_route("/", Rt::GET, handler!(demo_handle_home));
   server.add_route("/test", Rt::GET, handler!(demo_handle_get));
   server.add_route("/test", Rt::POST, handler!(demo_handle_post));
   server.add_route("/test/{param1}", Rt::POST, handler!(demo_handle_post));
-  server.add_route(
-    "/test/{param1}/{param2}",
-    Rt::POST,
-    handler!(demo_handle_post),
-  );
+  server.add_route("/test/{param1}/{param2}", Rt::POST, handler!(demo_handle_post));
   server.add_route("/test", Rt::PUT, handler!(demo_handle_put));
   server.add_route("/test", Rt::DELETE, handler!(demo_handle_delete));
   let res_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("res");

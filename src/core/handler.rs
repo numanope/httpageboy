@@ -21,9 +21,9 @@ pub trait Handler: Send + Sync {
 // Blanket implementation for Arc<dyn Handler> for convenience.
 #[async_trait]
 impl Handler for Arc<dyn Handler> {
-    async fn handle(&self, request: &Request) -> Response {
-        (**self).handle(request).await
-    }
+  async fn handle(&self, request: &Request) -> Response {
+    (**self).handle(request).await
+  }
 }
 
 // --- Helper Functions and Structs (To be hidden by the macro) ---
@@ -55,19 +55,19 @@ struct AsyncFnHandler<F>(F);
 #[async_trait]
 impl<F> Handler for AsyncFnHandler<F>
 where
-    F: for<'a> Fn(&'a Request) -> BoxFuture<'a, Response> + Send + Sync,
+  F: for<'a> Fn(&'a Request) -> BoxFuture<'a, Response> + Send + Sync,
 {
-    async fn handle(&self, request: &Request) -> Response {
-        (self.0)(request).await
-    }
+  async fn handle(&self, request: &Request) -> Response {
+    (self.0)(request).await
+  }
 }
 
 /// Wraps an asynchronous closure that returns a BoxFuture.
 pub fn async_h<F>(f: F) -> Arc<dyn Handler>
 where
-    F: for<'a> Fn(&'a Request) -> BoxFuture<'a, Response> + Send + Sync + 'static,
+  F: for<'a> Fn(&'a Request) -> BoxFuture<'a, Response> + Send + Sync + 'static,
 {
-    Arc::new(AsyncFnHandler(f))
+  Arc::new(AsyncFnHandler(f))
 }
 
 /// Simplifies handler creation for synchronous builds.
@@ -78,9 +78,9 @@ where
 #[macro_export]
 #[cfg(feature = "sync")]
 macro_rules! handler {
-    ($handler_fn:expr) => {
-        $crate::core::handler::sync_h($handler_fn)
-    };
+  ($handler_fn:expr) => {
+    $crate::core::handler::sync_h($handler_fn)
+  };
 }
 
 /// Simplifies handler creation for asynchronous builds.
@@ -95,7 +95,7 @@ macro_rules! handler {
   not(feature = "sync")
 ))]
 macro_rules! handler {
-    ($handler_fn:expr) => {
-        $crate::core::handler::async_h(move |req| Box::pin($handler_fn(req)))
-    };
+  ($handler_fn:expr) => {
+    $crate::core::handler::async_h(move |req| Box::pin($handler_fn(req)))
+  };
 }

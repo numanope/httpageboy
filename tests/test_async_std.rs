@@ -1,20 +1,16 @@
 #![cfg(feature = "async_std")]
 
-use httpageboy::test_utils::{run_test, setup_test_server, SERVER_URL};
-use httpageboy::{handler, Request, Response, Rt, Server, StatusCode};
+use httpageboy::test_utils::{active_server_url, run_test, setup_test_server};
+use httpageboy::{Request, Response, Rt, Server, StatusCode, handler};
 use std::collections::BTreeMap;
 
 async fn create_test_server() -> Server {
-  let mut server = Server::new(SERVER_URL, None).await.unwrap();
+  let mut server = Server::new(active_server_url(), None).await.unwrap();
   server.add_route("/", Rt::GET, handler!(demo_handle_home));
   server.add_route("/test", Rt::GET, handler!(demo_handle_get));
   server.add_route("/test", Rt::POST, handler!(demo_handle_post));
   server.add_route("/test/{param1}", Rt::POST, handler!(demo_handle_post));
-  server.add_route(
-    "/test/{param1}/{param2}",
-    Rt::POST,
-    handler!(demo_handle_post),
-  );
+  server.add_route("/test/{param1}/{param2}", Rt::POST, handler!(demo_handle_post));
   server.add_route("/test", Rt::PUT, handler!(demo_handle_put));
   server.add_route("/test", Rt::DELETE, handler!(demo_handle_delete));
   server.add_files_source("res");

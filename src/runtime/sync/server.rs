@@ -1,7 +1,7 @@
 #![cfg(feature = "sync")]
 
 use crate::core::handler::Handler;
-use crate::core::request::{handle_request_sync, Request};
+use crate::core::request::{Request, handle_request_sync};
 use crate::core::request_handler::Rh;
 use crate::core::request_type::Rt;
 use crate::core::response::Response;
@@ -9,7 +9,7 @@ use crate::runtime::shared::print_server_info;
 use crate::runtime::sync::threadpool::ThreadPool;
 use std::collections::HashMap;
 use std::io::prelude::Write;
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -45,6 +45,10 @@ impl Server {
     self.auto_close = state;
   }
 
+  pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
+    self.listener.local_addr()
+  }
+
   pub fn add_route(&mut self, path: &str, rt: Rt, handler: Arc<dyn Handler>) {
     let key = (rt, path.to_string());
     self.routes.insert(key, Rh { handler });
@@ -72,8 +76,7 @@ impl Server {
           let close_flag = self.auto_close;
           let pool = Arc::clone(&self.pool);
           pool.lock().unwrap().run(move || {
-            let (mut request, early_resp) =
-              Request::parse_stream_sync(&stream, &routes_local, &sources_local);
+            let (mut request, early_resp) = Request::parse_stream_sync(&stream, &routes_local, &sources_local);
             let answer = if let Some(resp) = early_resp {
               Some(resp)
             } else {

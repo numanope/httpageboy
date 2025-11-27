@@ -1,5 +1,5 @@
 #[cfg(feature = "async_tokio")]
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 #[cfg(feature = "async_std")]
 use {async_std::task::sleep, std::time::Duration};
 #[cfg(feature = "async_smol")]
@@ -11,7 +11,7 @@ use {smol::Timer as SmolTimer, std::time::Duration};
   feature = "async_std",
   feature = "async_smol"
 ))]
-use httpageboy::{handler, Request, Response, Rt, Server, StatusCode};
+use httpageboy::{Request, Response, Rt, Server, StatusCode, handler};
 
 // ROUTE HANDLER
 #[cfg(feature = "sync")]

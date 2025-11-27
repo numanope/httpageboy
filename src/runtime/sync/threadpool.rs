@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter, Result};
-use std::sync::mpsc::{channel, Receiver, SendError, Sender};
+use std::sync::mpsc::{Receiver, SendError, Sender, channel};
 use std::sync::{Arc, Mutex};
-use std::thread::{spawn, JoinHandle};
+use std::thread::{JoinHandle, spawn};
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
