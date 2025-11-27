@@ -37,7 +37,7 @@ macro_rules! create_async_parse_stream {
             }
 
             // Extract method from the first line
-            let method = raw
+            let _method = raw
                 .lines()
                 .next()
                 .and_then(|l| l.split_whitespace().next())
@@ -55,16 +55,12 @@ macro_rules! create_async_parse_stream {
                 })
                 .unwrap_or(0);
 
+            // Treat missing Content-Length as an empty body to avoid blocking on keep-alive.
             if content_length > 0 {
                 // Read exactly content_length bytes
                 let mut buf = vec![0; content_length];
                 let _ = reader.read_exact(&mut buf).await;
                 raw.push_str(&String::from_utf8_lossy(&buf));
-            } else if method != "GET" {
-                // Read all until EOF for POST/PUT/DELETE without Content-Length
-                let mut rest = String::new();
-                let _ = reader.read_to_string(&mut rest).await;
-                raw.push_str(&rest);
             }
 
             crate::core::request::Request::parse_raw_async(raw, routes, file_bases).await
@@ -217,7 +213,7 @@ impl Request {
     }
 
     // Extract method from the first line
-    let method = raw
+    let _method = raw
       .lines()
       .next()
       .and_then(|l| l.split_whitespace().next())
@@ -235,16 +231,12 @@ impl Request {
       })
       .unwrap_or(0);
 
+    // Treat missing Content-Length as an empty body to avoid blocking on keep-alive.
     if content_length > 0 {
       // Read exactly content_length
       let mut buf = vec![0; content_length];
       let _ = reader.read_exact(&mut buf);
       raw.push_str(&String::from_utf8_lossy(&buf));
-    } else if method != "GET" {
-      // Read all until EOF for POST/PUT/DELETE without Content-Length
-      let mut rest = String::new();
-      let _ = reader.read_to_string(&mut rest);
-      raw.push_str(&rest);
     }
 
     Self::parse_raw_sync(raw, routes, file_bases)

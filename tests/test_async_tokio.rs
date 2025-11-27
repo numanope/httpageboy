@@ -3,6 +3,7 @@
 use httpageboy::test_utils::{active_server_url, run_test, setup_test_server};
 use httpageboy::{Request, Response, Rt, Server, StatusCode, handler};
 use std::collections::BTreeMap;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 async fn create_test_server() -> Server {
   let mut server = Server::new(active_server_url(), None).await.unwrap();
@@ -100,7 +101,7 @@ async fn test_get_with_query() {
 #[tokio::test]
 async fn test_post() {
   setup_test_server(|| create_test_server()).await;
-  let request = b"POST /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
+  let request = b"POST /test HTTP/1.1\r\nContent-Length: 15\r\n\r\nmueve tu cuerpo";
   let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
@@ -109,7 +110,7 @@ async fn test_post() {
 #[tokio::test]
 async fn test_post_with_query() {
   setup_test_server(|| create_test_server()).await;
-  let request = b"POST /test?foo=bar HTTP/1.1\r\n\r\nmueve tu cuerpo";
+  let request = b"POST /test?foo=bar HTTP/1.1\r\nContent-Length: 15\r\n\r\nmueve tu cuerpo";
   let expected = b"Method: POST\nUri: /test\nParams: {\"foo\": \"bar\"}\nBody: \"mueve tu cuerpo\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
@@ -127,7 +128,8 @@ async fn test_post_with_content_length() {
 #[tokio::test]
 async fn test_post_with_params() {
   setup_test_server(|| create_test_server()).await;
-  let request = b"POST /test/hola/que?param4=hoy&param3=hace HTTP/1.1\r\n\r\nmueve tu cuerpo";
+  let request =
+    b"POST /test/hola/que?param4=hoy&param3=hace HTTP/1.1\r\nContent-Length: 15\r\n\r\nmueve tu cuerpo";
   let expected =
     b"Method: POST\nUri: /test/hola/que\nParams: {\"param1\": \"hola\", \"param2\": \"que\", \"param3\": \"hace\", \"param4\": \"hoy\"}\nBody: \"mueve tu cuerpo\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -137,7 +139,7 @@ async fn test_post_with_params() {
 #[tokio::test]
 async fn test_post_with_incomplete_path_params() {
   setup_test_server(|| create_test_server()).await;
-  let request = b"POST /test/hola HTTP/1.1\r\n\r\nmueve tu cuerpo";
+  let request = b"POST /test/hola HTTP/1.1\r\nContent-Length: 15\r\n\r\nmueve tu cuerpo";
   let expected = b"Method: POST\nUri: /test/hola\nParams: {\"param1\": \"hola\"}\nBody: \"mueve tu cuerpo\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
@@ -146,7 +148,7 @@ async fn test_post_with_incomplete_path_params() {
 #[tokio::test]
 async fn test_put() {
   setup_test_server(|| create_test_server()).await;
-  let request = b"PUT /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
+  let request = b"PUT /test HTTP/1.1\r\nContent-Length: 15\r\n\r\nmueve tu cuerpo";
   let expected = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
@@ -159,6 +161,32 @@ async fn test_delete() {
   let expected = b"delete";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_delete_without_content_length_and_open_connection() {
+  setup_test_server(|| create_test_server()).await;
+  let mut stream = tokio::net::TcpStream::connect(active_server_url())
+    .await
+    .expect("client connect failed");
+
+  stream
+    .write_all(b"DELETE /test HTTP/1.1\r\n\r\n")
+    .await
+    .expect("write request");
+
+  // Keep the connection open (no shutdown) to mimic keep-alive clients.
+  let mut buf = vec![0u8; 128];
+  let n = tokio::time::timeout(std::time::Duration::from_millis(500), stream.read(&mut buf))
+    .await
+    .expect("server hung waiting for response")
+    .expect("read response");
+  let resp = String::from_utf8_lossy(&buf[..n]);
+  assert!(
+    resp.contains("HTTP/1.1 200 OK"),
+    "response missing success status: {}",
+    resp
+  );
 }
 
 #[tokio::test]
