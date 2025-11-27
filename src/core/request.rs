@@ -37,7 +37,7 @@ macro_rules! create_async_parse_stream {
             }
 
             // Extract method from the first line
-            let _method = raw
+            let method = raw
                 .lines()
                 .next()
                 .and_then(|l| l.split_whitespace().next())
@@ -55,12 +55,56 @@ macro_rules! create_async_parse_stream {
                 })
                 .unwrap_or(0);
 
-            // Treat missing Content-Length as an empty body to avoid blocking on keep-alive.
+            // Read declared body size, or attempt a bounded read to avoid hanging on keep-alive with no Content-Length.
             if content_length > 0 {
                 // Read exactly content_length bytes
                 let mut buf = vec![0; content_length];
                 let _ = reader.read_exact(&mut buf).await;
                 raw.push_str(&String::from_utf8_lossy(&buf));
+            } else if method != "GET" {
+                let mut rest = String::new();
+
+                #[cfg(feature = "async_tokio")]
+                {
+                    use std::time::Duration;
+                    let read_fut = reader.read_to_string(&mut rest);
+                    let sleep = tokio::time::sleep(Duration::from_millis(200));
+                    futures::pin_mut!(read_fut, sleep);
+                    if matches!(
+                        futures::future::select(read_fut, sleep).await,
+                        futures::future::Either::Left((Ok(_), _))
+                    ) {
+                        raw.push_str(&rest);
+                    }
+                }
+
+                #[cfg(all(feature = "async_std", not(feature = "async_tokio")))]
+                {
+                    use std::time::Duration;
+                    let read_fut = reader.read_to_string(&mut rest);
+                    let sleep = async_std::task::sleep(Duration::from_millis(200));
+                    futures::pin_mut!(read_fut, sleep);
+                    if matches!(
+                        futures::future::select(read_fut, sleep).await,
+                        futures::future::Either::Left((Ok(_), _))
+                    ) {
+                        raw.push_str(&rest);
+                    }
+                }
+
+                #[cfg(all(feature = "async_smol", not(any(feature = "async_tokio", feature = "async_std"))))]
+                {
+                    use std::time::Duration;
+                    let read_fut = reader.read_to_string(&mut rest);
+                    let sleep = smol::Timer::after(Duration::from_millis(200));
+                    futures::pin_mut!(read_fut, sleep);
+                    if matches!(
+                        futures::future::select(read_fut, sleep).await,
+                        futures::future::Either::Left((Ok(_), _))
+                    ) {
+                        raw.push_str(&rest);
+                    }
+                }
             }
 
             crate::core::request::Request::parse_raw_async(raw, routes, file_bases).await
@@ -213,7 +257,7 @@ impl Request {
     }
 
     // Extract method from the first line
-    let _method = raw
+    let method = raw
       .lines()
       .next()
       .and_then(|l| l.split_whitespace().next())
@@ -237,6 +281,12 @@ impl Request {
       let mut buf = vec![0; content_length];
       let _ = reader.read_exact(&mut buf);
       raw.push_str(&String::from_utf8_lossy(&buf));
+    } else if method != "GET" {
+      let mut rest = String::new();
+      let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(200)));
+      let _ = reader.read_to_string(&mut rest);
+      let _ = stream.set_read_timeout(None);
+      raw.push_str(&rest);
     }
 
     Self::parse_raw_sync(raw, routes, file_bases)
