@@ -27,10 +27,10 @@ use crate::runtime::r#async::smol::Server;
 ))]
 use crate::runtime::r#async::async_std::Server;
 
-pub const SERVER_URL: &str = "127.0.0.1:0";
 pub const POOL_SIZE: u8 = 10;
 pub const INTERVAL: Duration = Duration::from_millis(250);
 static SERVER_ADDR: OnceLock<String> = OnceLock::new();
+pub const SERVER_URL: &str = "127.0.0.1:0";
 #[cfg(any(
   feature = "sync",
   feature = "async_tokio",
@@ -55,7 +55,7 @@ where
   F: FnOnce() -> Server + Send + 'static,
 {
   INIT.call_once(|| {
-    let _ = active_server_url();
+    active_server_url();
     let server = server_factory();
     thread::spawn(move || {
       server.run();
@@ -72,7 +72,7 @@ where
   Fut: std::future::Future<Output = Server> + Send + 'static,
 {
   INIT.call_once(|| {
-    let _ = active_server_url();
+    active_server_url();
     thread::spawn(move || {
       // Arranca un runtime Tokio en este hilo
       let rt = tokio::runtime::Builder::new_multi_thread()
@@ -96,7 +96,7 @@ where
   Fut: std::future::Future<Output = Server> + Send + 'static,
 {
   INIT.call_once(|| {
-    let _ = active_server_url();
+    active_server_url();
     thread::spawn(move || {
       // Arranca async-std en este hilo
       async_std::task::block_on(async move {
@@ -118,7 +118,7 @@ where
   Fut: std::future::Future<Output = Server> + Send + 'static,
 {
   INIT.call_once(|| {
-    let _ = active_server_url();
+    active_server_url();
     thread::spawn(move || {
       smol::block_on(async move {
         let server = server_factory().await;
