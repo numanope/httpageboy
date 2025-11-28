@@ -3,10 +3,14 @@
 use httpageboy::test_utils::{active_server_url, run_test, setup_test_server};
 use httpageboy::{Request, Response, Rt, Server, StatusCode, handler};
 use std::collections::BTreeMap;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-async fn create_test_server() -> Server {
-  let mut server = Server::new(active_server_url(), None).await.unwrap();
+async fn common_server_definition(server_url: &str) -> Server {
+  let mut server = match Server::new(server_url, None).await {
+    Ok(server) => server,
+    Err(_) => Server::new("127.0.0.1:0", None)
+      .await
+      .expect("failed to bind test server"),
+  };
   server.add_route("/", Rt::GET, handler!(demo_handle_home));
   server.add_route("/test", Rt::GET, handler!(demo_handle_get));
   server.add_route("/test", Rt::POST, handler!(demo_handle_post));
@@ -19,19 +23,26 @@ async fn create_test_server() -> Server {
   server
 }
 
+async fn regular_server_definition() -> Server {
+  let server_url = active_server_url();
+  common_server_definition(server_url).await
+}
+
+async fn strict_server_definition() -> Server {
+  let server_url = active_server_url();
+  let server = common_server_definition(server_url).await;
+  server.with_strict_content_length(true)
+}
+
+async fn create_test_server() -> Server {
+  regular_server_definition().await
+}
+
 async fn demo_handle_home(_request: &Request) -> Response {
   Response {
     status: StatusCode::Ok.to_string(),
     content_type: String::new(),
     content: b"home".to_vec(),
-  }
-}
-
-async fn demo_handle_get(_request: &Request) -> Response {
-  Response {
-    status: StatusCode::Ok.to_string(),
-    content_type: String::new(),
-    content: b"get".to_vec(),
   }
 }
 
@@ -48,6 +59,14 @@ async fn demo_handle_post(_request: &Request) -> Response {
     status: StatusCode::Ok.to_string(),
     content_type: String::new(),
     content: body.into_bytes(),
+  }
+}
+
+async fn demo_handle_get(_request: &Request) -> Response {
+  Response {
+    status: StatusCode::Ok.to_string(),
+    content_type: String::new(),
+    content: b"get".to_vec(),
   }
 }
 
@@ -93,6 +112,42 @@ async fn test_get() {
 async fn test_get_with_query() {
   setup_test_server(|| create_test_server()).await;
   let request = b"GET /test?foo=bar&baz=qux HTTP/1.1\r\n\r\n";
+  let expected = b"get";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_get_no_content_length() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"GET /test HTTP/1.1\r\n\r\n";
+  let expected = b"get";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_get_with_content_length_matching_body() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"GET /test HTTP/1.1\r\nContent-Length: 4\r\n\r\nping";
+  let expected = b"get";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_get_with_content_length_smaller_than_body() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"GET /test HTTP/1.1\r\nContent-Length: 1\r\n\r\npong";
+  let expected = b"get";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_get_with_content_length_larger_than_body() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"GET /test HTTP/1.1\r\nContent-Length: 10\r\n\r\nhi";
   let expected = b"get";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
@@ -145,10 +200,82 @@ async fn test_post_with_incomplete_path_params() {
 }
 
 #[tokio::test]
+async fn test_post_without_content_length_body() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"POST /test HTTP/1.1\r\n\r\nbody";
+  let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"body\"";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_post_with_matching_content_length() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"POST /test HTTP/1.1\r\nContent-Length: 4\r\n\r\nbody";
+  let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"body\"";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_post_with_smaller_content_length() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"POST /test HTTP/1.1\r\nContent-Length: 2\r\n\r\nbody";
+  let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"bo\"";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_post_with_larger_content_length() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"POST /test HTTP/1.1\r\nContent-Length: 10\r\n\r\nbody";
+  let expected = b"HTTP/1.1 200 OK";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
 async fn test_put() {
   setup_test_server(|| create_test_server()).await;
   let request = b"PUT /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
   let expected = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_put_without_content_length() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"PUT /test HTTP/1.1\r\n\r\nput";
+  let expected = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"put\"";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_put_with_matching_content_length() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"PUT /test HTTP/1.1\r\nContent-Length: 3\r\n\r\nput";
+  let expected = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"put\"";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_put_with_smaller_content_length() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"PUT /test HTTP/1.1\r\nContent-Length: 1\r\n\r\nput";
+  let expected = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"p\"";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_put_with_larger_content_length() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"PUT /test HTTP/1.1\r\nContent-Length: 8\r\n\r\nput";
+  let expected = b"HTTP/1.1 200 OK";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
 }
@@ -163,29 +290,66 @@ async fn test_delete() {
 }
 
 #[tokio::test]
-async fn test_delete_without_content_length_and_open_connection() {
+async fn test_delete_no_content_length() {
   setup_test_server(|| create_test_server()).await;
-  let mut stream = tokio::net::TcpStream::connect(active_server_url())
-    .await
-    .expect("client connect failed");
+  let request = b"DELETE /test HTTP/1.1\r\n\r\n";
+  let expected = b"delete";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
 
-  stream
-    .write_all(b"DELETE /test HTTP/1.1\r\n\r\n")
-    .await
-    .expect("write request");
+#[tokio::test]
+async fn test_delete_with_content_length_matching_body() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"DELETE /test HTTP/1.1\r\nContent-Length: 4\r\n\r\nping";
+  let expected = b"delete";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
 
-  // Keep the connection open (no shutdown) to mimic keep-alive clients.
-  let mut buf = vec![0u8; 128];
-  let n = tokio::time::timeout(std::time::Duration::from_millis(500), stream.read(&mut buf))
-    .await
-    .expect("server hung waiting for response")
-    .expect("read response");
-  let resp = String::from_utf8_lossy(&buf[..n]);
-  assert!(
-    resp.contains("HTTP/1.1 200 OK"),
-    "response missing success status: {}",
-    resp
-  );
+#[tokio::test]
+async fn test_delete_with_content_length_smaller_than_body() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"DELETE /test HTTP/1.1\r\nContent-Length: 1\r\n\r\nping";
+  let expected = b"delete";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_delete_with_content_length_larger_than_body() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"DELETE /test HTTP/1.1\r\nContent-Length: 20\r\n\r\nping";
+  let expected = b"delete";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_strict_mode_without_content_length() {
+  setup_test_server(|| strict_server_definition()).await;
+  let request = b"POST /test HTTP/1.1\r\n\r\npayload";
+  let expected = b"HTTP/1.1 411 Length Required";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_strict_mode_with_content_length() {
+  setup_test_server(|| strict_server_definition()).await;
+  let request = b"POST /test HTTP/1.1\r\nContent-Length: 7\r\n\r\npayload";
+  let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"payload\"";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_strict_mode_get_without_content_length() {
+  setup_test_server(|| strict_server_definition()).await;
+  let request = b"GET /test HTTP/1.1\r\n\r\n";
+  let expected = b"get";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
 }
 
 #[tokio::test]
@@ -200,7 +364,7 @@ async fn test_file_exists() {
 #[tokio::test]
 async fn test_file_not_found() {
   setup_test_server(|| create_test_server()).await;
-  let request = b"GET /no_file_here.png HTTP/1.1\r\n\r\n";
+  let request = b"GET /test.png HTTP/1.1\r\n\r\n";
   let expected = b"HTTP/1.1 404 Not Found";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
