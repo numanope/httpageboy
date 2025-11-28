@@ -4,7 +4,9 @@ use httpageboy::{Request, Response, Rt, Server, StatusCode, handler};
 use std::collections::BTreeMap;
 
 fn common_server_definition(server_url: &str) -> Server {
-  let mut server = Server::new(server_url, POOL_SIZE, None).unwrap();
+  let mut server = Server::new(server_url, POOL_SIZE, None)
+    .or_else(|_| Server::new("127.0.0.1:0", POOL_SIZE, None))
+    .expect("failed to bind test server");
   server.add_route("/", Rt::GET, handler!(demo_handle_home));
   server.add_route("/test", Rt::GET, handler!(demo_handle_get));
   server.add_route("/test", Rt::POST, handler!(demo_handle_post));
@@ -18,12 +20,12 @@ fn common_server_definition(server_url: &str) -> Server {
 }
 
 fn regular_server_definition() -> Server {
-  let server_url = "127.0.0.1:0";
+  let server_url = "127.0.0.1:38080";
   common_server_definition(server_url)
 }
 
 fn strict_server_definition() -> Server {
-  let server_url = "127.0.0.1:1";
+  let server_url = "127.0.0.1:38081";
   let server = common_server_definition(server_url);
   server.with_strict_content_length(true)
 }
