@@ -1,5 +1,5 @@
 #![cfg(feature = "sync")]
-use httpageboy::test_utils::{POOL_SIZE, active_server_url, run_test, setup_test_server};
+use httpageboy::test_utils::{POOL_SIZE, run_test, setup_test_server};
 use httpageboy::{Request, Response, Rt, Server, StatusCode, handler};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
