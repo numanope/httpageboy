@@ -30,8 +30,7 @@ async fn regular_server_definition() -> Server {
 
 async fn strict_server_definition() -> Server {
   let server_url = active_server_url();
-  let server = common_server_definition(server_url).await;
-  server.with_strict_content_length(true)
+  common_server_definition(server_url).await
 }
 
 async fn create_test_server() -> Server {
@@ -172,7 +171,7 @@ fn test_post() {
   smol::block_on(async {
     setup_test_server(|| create_test_server()).await;
     let request = b"POST /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
-    let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
+    let expected = b"HTTP/1.1 411 Length Required";
     smol::Timer::after(std::time::Duration::from_millis(100)).await;
     run_test(request, expected);
   });
@@ -183,7 +182,7 @@ fn test_post_with_query() {
   smol::block_on(async {
     setup_test_server(|| create_test_server()).await;
     let request = b"POST /test?foo=bar HTTP/1.1\r\n\r\nmueve tu cuerpo";
-    let expected = b"Method: POST\nUri: /test\nParams: {\"foo\": \"bar\"}\nBody: \"mueve tu cuerpo\"";
+    let expected = b"HTTP/1.1 411 Length Required";
     smol::Timer::after(std::time::Duration::from_millis(100)).await;
     run_test(request, expected);
   });
@@ -205,8 +204,7 @@ fn test_post_with_params() {
   smol::block_on(async {
     setup_test_server(|| create_test_server()).await;
     let request = b"POST /test/hola/que?param4=hoy&param3=hace HTTP/1.1\r\n\r\nmueve tu cuerpo";
-    let expected =
-      b"Method: POST\nUri: /test/hola/que\nParams: {\"param1\": \"hola\", \"param2\": \"que\", \"param3\": \"hace\", \"param4\": \"hoy\"}\nBody: \"mueve tu cuerpo\"";
+    let expected = b"HTTP/1.1 411 Length Required";
     smol::Timer::after(std::time::Duration::from_millis(100)).await;
     run_test(request, expected);
   });
@@ -217,7 +215,7 @@ fn test_post_with_incomplete_path_params() {
   smol::block_on(async {
     setup_test_server(|| create_test_server()).await;
     let request = b"POST /test/hola HTTP/1.1\r\n\r\nmueve tu cuerpo";
-    let expected = b"Method: POST\nUri: /test/hola\nParams: {\"param1\": \"hola\"}\nBody: \"mueve tu cuerpo\"";
+    let expected = b"HTTP/1.1 411 Length Required";
     smol::Timer::after(std::time::Duration::from_millis(100)).await;
     run_test(request, expected);
   });
@@ -228,7 +226,7 @@ fn test_post_without_content_length_body() {
   smol::block_on(async {
     setup_test_server(|| create_test_server()).await;
     let request = b"POST /test HTTP/1.1\r\n\r\nbody";
-    let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"body\"";
+    let expected = b"HTTP/1.1 411 Length Required";
     smol::Timer::after(std::time::Duration::from_millis(100)).await;
     run_test(request, expected);
   });
@@ -272,7 +270,7 @@ fn test_put() {
   smol::block_on(async {
     setup_test_server(|| create_test_server()).await;
     let request = b"PUT /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
-    let expected = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
+    let expected = b"HTTP/1.1 411 Length Required";
     smol::Timer::after(std::time::Duration::from_millis(100)).await;
     run_test(request, expected);
   });
@@ -283,7 +281,7 @@ fn test_put_without_content_length() {
   smol::block_on(async {
     setup_test_server(|| create_test_server()).await;
     let request = b"PUT /test HTTP/1.1\r\n\r\nput";
-    let expected = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"put\"";
+    let expected = b"HTTP/1.1 411 Length Required";
     smol::Timer::after(std::time::Duration::from_millis(100)).await;
     run_test(request, expected);
   });

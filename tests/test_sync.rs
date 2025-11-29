@@ -26,8 +26,7 @@ fn regular_server_definition() -> Server {
 
 fn strict_server_definition() -> Server {
   let server_url = "127.0.0.1:38081";
-  let server = common_server_definition(server_url);
-  server.with_strict_content_length(true)
+  common_server_definition(server_url)
 }
 
 fn demo_handle_home(_request: &Request) -> Response {
@@ -145,7 +144,7 @@ fn test_get_with_content_length_larger_than_body() {
 fn test_post() {
   setup_test_server(regular_server_definition);
   let request = b"POST /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
-  let expected_response = b"Method: POST\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
+  let expected_response = b"HTTP/1.1 411 Length Required";
   run_test(request, expected_response);
 }
 
@@ -153,7 +152,7 @@ fn test_post() {
 fn test_post_with_query() {
   setup_test_server(regular_server_definition);
   let request = b"POST /test?foo=bar HTTP/1.1\r\n\r\nmueve tu cuerpo";
-  let expected_response = b"Method: POST\nUri: /test\nParams: {\"foo\": \"bar\"}\nBody: \"mueve tu cuerpo\"";
+  let expected_response = b"HTTP/1.1 411 Length Required";
   run_test(request, expected_response);
 }
 
@@ -169,7 +168,7 @@ fn test_post_with_content_length() {
 fn test_post_with_params() {
   setup_test_server(regular_server_definition);
   let request = b"POST /test/hola/que?param4=hoy&param3=hace HTTP/1.1\r\n\r\nmueve tu cuerpo";
-  let expected_response = b"Method: POST\nUri: /test/hola/que\nParams: {\"param1\": \"hola\", \"param2\": \"que\", \"param3\": \"hace\", \"param4\": \"hoy\"}\nBody: \"mueve tu cuerpo\"";
+  let expected_response = b"HTTP/1.1 411 Length Required";
   run_test(request, expected_response);
 }
 
@@ -177,7 +176,7 @@ fn test_post_with_params() {
 fn test_post_with_incomplete_path_params() {
   setup_test_server(regular_server_definition);
   let request = b"POST /test/hola HTTP/1.1\r\n\r\nmueve tu cuerpo";
-  let expected_response = b"Method: POST\nUri: /test/hola\nParams: {\"param1\": \"hola\"}\nBody: \"mueve tu cuerpo\"";
+  let expected_response = b"HTTP/1.1 411 Length Required";
   run_test(request, expected_response);
 }
 
@@ -185,7 +184,7 @@ fn test_post_with_incomplete_path_params() {
 fn test_post_without_content_length_body() {
   setup_test_server(regular_server_definition);
   let request = b"POST /test HTTP/1.1\r\n\r\nbody";
-  let expected_response = b"Method: POST\nUri: /test\nParams: {}\nBody: \"body\"";
+  let expected_response = b"HTTP/1.1 411 Length Required";
   run_test(request, expected_response);
 }
 
@@ -217,7 +216,7 @@ fn test_post_with_larger_content_length() {
 fn test_put() {
   setup_test_server(regular_server_definition);
   let request = b"PUT /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
-  let expected_response = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
+  let expected_response = b"HTTP/1.1 411 Length Required";
   run_test(request, expected_response);
 }
 
@@ -225,7 +224,7 @@ fn test_put() {
 fn test_put_without_content_length() {
   setup_test_server(regular_server_definition);
   let request = b"PUT /test HTTP/1.1\r\n\r\nput";
-  let expected_response = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"put\"";
+  let expected_response = b"HTTP/1.1 411 Length Required";
   run_test(request, expected_response);
 }
 

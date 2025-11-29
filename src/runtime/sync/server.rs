@@ -20,9 +20,6 @@ pub struct Server {
   routes: HashMap<(Rt, String), Rh>,
   files_sources: Vec<String>,
   auto_close: bool,
-  body_read_limit_bytes: u64,
-  body_read_timeout_ms: u64,
-  strict_content_length: bool,
 }
 
 impl Server {
@@ -41,25 +38,7 @@ impl Server {
       routes,
       files_sources: Vec::new(),
       auto_close: true,
-      body_read_limit_bytes: 512,
-      body_read_timeout_ms: 50,
-      strict_content_length: false,
     })
-  }
-
-  pub fn with_body_read_limit(mut self, limit_bytes: u64) -> Self {
-    self.body_read_limit_bytes = limit_bytes;
-    self
-  }
-
-  pub fn with_body_read_timeout(mut self, timeout_ms: u64) -> Self {
-    self.body_read_timeout_ms = timeout_ms;
-    self
-  }
-
-  pub fn with_strict_content_length(mut self, strict: bool) -> Self {
-    self.strict_content_length = strict;
-    self
   }
 
   pub fn set_auto_close(&mut self, state: bool) {
@@ -95,18 +74,12 @@ impl Server {
           let routes_local = self.routes.clone();
           let sources_local = self.files_sources.clone();
           let close_flag = self.auto_close;
-          let body_read_limit_bytes = self.body_read_limit_bytes;
-          let body_read_timeout_ms = self.body_read_timeout_ms;
-          let strict_content_length = self.strict_content_length;
           let pool = Arc::clone(&self.pool);
           pool.lock().unwrap().run(move || {
             let (mut request, early_resp) = Request::parse_stream_sync(
               &stream,
               &routes_local,
               &sources_local,
-              body_read_limit_bytes,
-              body_read_timeout_ms,
-              strict_content_length,
             );
             let answer = if let Some(resp) = early_resp {
               Some(resp)

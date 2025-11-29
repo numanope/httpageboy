@@ -3,6 +3,9 @@
 /// This macro abstracts the common logic of reading and parsing an HTTP request
 /// from a TCP stream, while allowing the caller to specify the runtime-specific
 /// types and traits (stream type, BufReader, and I/O extension traits).
+pub const READ_TIMEOUT_MS: u64 = 50;
+pub const BODY_READ_LIMIT_BYTES: u64 = 512;
+
 macro_rules! create_async_parse_stream {
     (
         $(#[$outer:meta])*
@@ -17,25 +20,63 @@ macro_rules! create_async_parse_stream {
             stream: &mut $stream_ty,
             routes: &std::collections::HashMap<(crate::core::request_type::Rt, String), crate::core::request_handler::Rh>,
             file_bases: &[String],
-            body_read_limit_bytes: u64,
-            body_read_timeout_ms: u64,
-            strict_content_length: bool,
         ) -> (crate::core::request::Request, Option<crate::core::response::Response>) {
             use $async_read_ext;
             use $async_buf_read_ext;
 
             let mut reader = <$buf_reader>::new(stream);
             let mut raw = String::new();
+            let header_timeout = std::time::Duration::from_millis(crate::core::request::READ_TIMEOUT_MS);
 
             // Read headers only
             loop {
                 let mut line = String::new();
-                if reader.read_line(&mut line).await.ok().filter(|&n| n > 0).is_none() {
-                    break;
+                #[cfg(feature = "async_tokio")]
+                {
+                    let read_fut = reader.read_line(&mut line);
+                    let sleep = tokio::time::sleep(header_timeout);
+                    futures::pin_mut!(read_fut, sleep);
+                    match futures::future::select(read_fut, sleep).await {
+                        futures::future::Either::Left((Ok(n), _)) if n > 0 => {
+                            raw.push_str(&line);
+                            if raw.contains("\r\n\r\n") {
+                                break;
+                            }
+                        }
+                        _ => break,
+                    }
                 }
-                raw.push_str(&line);
-                if raw.contains("\r\n\r\n") {
-                    break;
+
+                #[cfg(all(feature = "async_std", not(feature = "async_tokio")))]
+                {
+                    let read_fut = reader.read_line(&mut line);
+                    let sleep = async_std::task::sleep(header_timeout);
+                    futures::pin_mut!(read_fut, sleep);
+                    match futures::future::select(read_fut, sleep).await {
+                        futures::future::Either::Left((Ok(n), _)) if n > 0 => {
+                            raw.push_str(&line);
+                            if raw.contains("\r\n\r\n") {
+                                break;
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+
+                #[cfg(all(feature = "async_smol", not(any(feature = "async_tokio", feature = "async_std"))))]
+                {
+                    let read_fut = reader.read_line(&mut line);
+                    let sleep = smol::Timer::after(header_timeout);
+                    futures::pin_mut!(read_fut, sleep);
+                    match futures::future::select(read_fut, sleep).await {
+                        futures::future::Either::Left((Ok(n), _)) if n > 0 => {
+                            raw.push_str(&line);
+                            if raw.contains("\r\n\r\n") {
+                                break;
+                            }
+                        }
+                        _ => break,
+                    }
                 }
             }
 
@@ -48,14 +89,14 @@ macro_rules! create_async_parse_stream {
 
             let (content_length, has_transfer_encoding) = crate::core::request::extract_body_headers(&raw);
 
-            // Read declared body size, or attempt a bounded read to avoid hanging on keep-alive with no Content-Length.
+            // Read declared body size. For POST/PUT without Content-Length or Transfer-Encoding, return 411.
             if content_length > 0 {
                 // Read exactly content_length bytes
                 let mut buf = vec![0; content_length];
                 let _ = reader.read_exact(&mut buf).await;
                 raw.push_str(&String::from_utf8_lossy(&buf));
-            } else if method != "GET" {
-                if strict_content_length && !has_transfer_encoding {
+            } else if method == "POST" || method == "PUT" {
+                if !has_transfer_encoding {
                     return (
                         crate::core::request::Request::default(),
                         Some(crate::core::response::Response {
@@ -66,14 +107,15 @@ macro_rules! create_async_parse_stream {
                     );
                 }
 
+                // Read all until EOF for POST/PUT with Transfer-Encoding and without Content-Length
                 let mut rest = String::new();
 
                 #[cfg(feature = "async_tokio")]
                 {
                     use std::time::Duration;
-                    let mut limited = reader.take(body_read_limit_bytes);
+                    let mut limited = reader.take(crate::core::request::BODY_READ_LIMIT_BYTES);
                     let read_fut = limited.read_to_string(&mut rest);
-                    let sleep = tokio::time::sleep(Duration::from_millis(body_read_timeout_ms));
+                    let sleep = tokio::time::sleep(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
                     futures::pin_mut!(read_fut, sleep);
                     if matches!(
                         futures::future::select(read_fut, sleep).await,
@@ -86,9 +128,9 @@ macro_rules! create_async_parse_stream {
                 #[cfg(all(feature = "async_std", not(feature = "async_tokio")))]
                 {
                     use std::time::Duration;
-                    let mut limited = reader.take(body_read_limit_bytes);
+                    let mut limited = reader.take(crate::core::request::BODY_READ_LIMIT_BYTES);
                     let read_fut = limited.read_to_string(&mut rest);
-                    let sleep = async_std::task::sleep(Duration::from_millis(body_read_timeout_ms));
+                    let sleep = async_std::task::sleep(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
                     futures::pin_mut!(read_fut, sleep);
                     if matches!(
                         futures::future::select(read_fut, sleep).await,
@@ -101,9 +143,9 @@ macro_rules! create_async_parse_stream {
                 #[cfg(all(feature = "async_smol", not(any(feature = "async_tokio", feature = "async_std"))))]
                 {
                     use std::time::Duration;
-                    let mut limited = reader.take(body_read_limit_bytes);
+                    let mut limited = reader.take(crate::core::request::BODY_READ_LIMIT_BYTES);
                     let read_fut = limited.read_to_string(&mut rest);
-                    let sleep = smol::Timer::after(Duration::from_millis(body_read_timeout_ms));
+                    let sleep = smol::Timer::after(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
                     futures::pin_mut!(read_fut, sleep);
                     if matches!(
                         futures::future::select(read_fut, sleep).await,
@@ -267,15 +309,14 @@ impl Request {
     stream: &TcpStream,
     routes: &HashMap<(Rt, String), Rh>,
     file_bases: &[String],
-    body_read_limit_bytes: u64,
-    body_read_timeout_ms: u64,
-    strict_content_length: bool,
   ) -> (Self, Option<Response>) {
     use std::io::{BufRead, BufReader, Read};
     use std::time::Duration;
 
     let mut reader = BufReader::new(stream);
     let mut raw = String::new();
+    let header_timeout = Duration::from_millis(READ_TIMEOUT_MS);
+    let _ = stream.set_read_timeout(Some(header_timeout));
 
     // Read only headers
     loop {
@@ -297,15 +338,16 @@ impl Request {
       .unwrap_or("");
 
     let (content_length, has_transfer_encoding) = extract_body_headers(&raw);
+    let _ = stream.set_read_timeout(None);
 
-    // Treat missing Content-Length as an empty body to avoid blocking on keep-alive.
+    // Require Content-Length (or Transfer-Encoding) for POST/PUT; avoid blocking on keep-alive.
     if content_length > 0 {
       // Read exactly content_length
       let mut buf = vec![0; content_length];
       let _ = reader.read_exact(&mut buf);
       raw.push_str(&String::from_utf8_lossy(&buf));
-    } else if method != "GET" {
-      if strict_content_length && !has_transfer_encoding {
+    } else if method == "POST" || method == "PUT" {
+      if !has_transfer_encoding {
         return (
           Self::default(),
           Some(Response {
@@ -315,9 +357,10 @@ impl Request {
           }),
         );
       }
+      // Read all until EOF for POST/PUT without Content-Length
       let mut rest = String::new();
-      let _ = stream.set_read_timeout(Some(Duration::from_millis(body_read_timeout_ms)));
-      let _ = reader.take(body_read_limit_bytes).read_to_string(&mut rest);
+      let _ = stream.set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS)));
+      let _ = reader.take(BODY_READ_LIMIT_BYTES).read_to_string(&mut rest);
       let _ = stream.set_read_timeout(None);
       raw.push_str(&rest);
     }
