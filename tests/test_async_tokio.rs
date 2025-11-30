@@ -156,7 +156,16 @@ async fn test_get_with_content_length_larger_than_body() {
 async fn test_post() {
   setup_test_server(|| create_test_server()).await;
   let request = b"POST /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
-  let expected = b"HTTP/1.1 411 Length Required";
+  let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_test(request, expected);
+}
+
+#[tokio::test]
+async fn test_post_without_content_length_empty_body() {
+  setup_test_server(|| create_test_server()).await;
+  let request = b"POST /test HTTP/1.1\r\n\r\n";
+  let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
 }
@@ -165,7 +174,7 @@ async fn test_post() {
 async fn test_post_with_query() {
   setup_test_server(|| create_test_server()).await;
   let request = b"POST /test?foo=bar HTTP/1.1\r\n\r\nmueve tu cuerpo";
-  let expected = b"HTTP/1.1 411 Length Required";
+  let expected = b"Method: POST\nUri: /test\nParams: {\"foo\": \"bar\"}\nBody: \"mueve tu cuerpo\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
 }
@@ -183,7 +192,8 @@ async fn test_post_with_content_length() {
 async fn test_post_with_params() {
   setup_test_server(|| create_test_server()).await;
   let request = b"POST /test/hola/que?param4=hoy&param3=hace HTTP/1.1\r\n\r\nmueve tu cuerpo";
-  let expected = b"HTTP/1.1 411 Length Required";
+  let expected =
+    b"Method: POST\nUri: /test/hola/que\nParams: {\"param1\": \"hola\", \"param2\": \"que\", \"param3\": \"hace\", \"param4\": \"hoy\"}\nBody: \"mueve tu cuerpo\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
 }
@@ -192,7 +202,7 @@ async fn test_post_with_params() {
 async fn test_post_with_incomplete_path_params() {
   setup_test_server(|| create_test_server()).await;
   let request = b"POST /test/hola HTTP/1.1\r\n\r\nmueve tu cuerpo";
-  let expected = b"HTTP/1.1 411 Length Required";
+  let expected = b"Method: POST\nUri: /test/hola\nParams: {\"param1\": \"hola\"}\nBody: \"mueve tu cuerpo\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
 }
@@ -201,7 +211,7 @@ async fn test_post_with_incomplete_path_params() {
 async fn test_post_without_content_length_body() {
   setup_test_server(|| create_test_server()).await;
   let request = b"POST /test HTTP/1.1\r\n\r\nbody";
-  let expected = b"HTTP/1.1 411 Length Required";
+  let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"body\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
 }
@@ -237,7 +247,7 @@ async fn test_post_with_larger_content_length() {
 async fn test_put() {
   setup_test_server(|| create_test_server()).await;
   let request = b"PUT /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
-  let expected = b"HTTP/1.1 411 Length Required";
+  let expected = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
 }
@@ -246,7 +256,7 @@ async fn test_put() {
 async fn test_put_without_content_length() {
   setup_test_server(|| create_test_server()).await;
   let request = b"PUT /test HTTP/1.1\r\n\r\nput";
-  let expected = b"HTTP/1.1 411 Length Required";
+  let expected = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"put\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
 }
@@ -327,7 +337,7 @@ async fn test_delete_with_content_length_larger_than_body() {
 async fn test_strict_mode_without_content_length() {
   setup_test_server(|| strict_server_definition()).await;
   let request = b"POST /test HTTP/1.1\r\n\r\npayload";
-  let expected = b"HTTP/1.1 411 Length Required";
+  let expected = b"Method: POST\nUri: /test\nParams: {}\nBody: \"payload\"";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_test(request, expected);
 }

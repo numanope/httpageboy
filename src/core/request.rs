@@ -89,69 +89,133 @@ macro_rules! create_async_parse_stream {
 
             let (content_length, has_transfer_encoding) = crate::core::request::extract_body_headers(&raw);
 
-            // Read declared body size. For POST/PUT without Content-Length or Transfer-Encoding, return 411.
+            // Read declared body size. For POST/PUT/DELETE without Content-Length or Transfer-Encoding, fall back to a timed read.
             if content_length > 0 {
                 // Read exactly content_length bytes
                 let mut buf = vec![0; content_length];
                 let _ = reader.read_exact(&mut buf).await;
                 raw.push_str(&String::from_utf8_lossy(&buf));
-            } else if method == "POST" || method == "PUT" {
-                if !has_transfer_encoding {
-                    return (
-                        crate::core::request::Request::default(),
-                        Some(crate::core::response::Response {
-                            status: crate::core::status_code::StatusCode::LengthRequired.to_string(),
-                            content_type: String::new(),
-                            content: Vec::new(),
-                        }),
-                    );
-                }
+            } else if method == "POST" || method == "PUT" || method == "DELETE" {
+                if has_transfer_encoding {
+                    // Read all until EOF for POST/PUT/DELETE with Transfer-Encoding and without Content-Length
+                    let mut rest = String::new();
 
-                // Read all until EOF for POST/PUT with Transfer-Encoding and without Content-Length
-                let mut rest = String::new();
-
-                #[cfg(feature = "async_tokio")]
-                {
-                    use std::time::Duration;
-                    let mut limited = reader.take(crate::core::request::BODY_READ_LIMIT_BYTES);
-                    let read_fut = limited.read_to_string(&mut rest);
-                    let sleep = tokio::time::sleep(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
-                    futures::pin_mut!(read_fut, sleep);
-                    if matches!(
-                        futures::future::select(read_fut, sleep).await,
-                        futures::future::Either::Left((Ok(_), _))
-                    ) {
-                        raw.push_str(&rest);
+                    #[cfg(feature = "async_tokio")]
+                    {
+                        use std::time::Duration;
+                        let mut limited = reader.take(crate::core::request::BODY_READ_LIMIT_BYTES);
+                        let read_fut = limited.read_to_string(&mut rest);
+                        let sleep = tokio::time::sleep(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
+                        futures::pin_mut!(read_fut, sleep);
+                        if matches!(
+                            futures::future::select(read_fut, sleep).await,
+                            futures::future::Either::Left((Ok(_), _))
+                        ) {
+                            raw.push_str(&rest);
+                        }
                     }
-                }
 
-                #[cfg(all(feature = "async_std", not(feature = "async_tokio")))]
-                {
-                    use std::time::Duration;
-                    let mut limited = reader.take(crate::core::request::BODY_READ_LIMIT_BYTES);
-                    let read_fut = limited.read_to_string(&mut rest);
-                    let sleep = async_std::task::sleep(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
-                    futures::pin_mut!(read_fut, sleep);
-                    if matches!(
-                        futures::future::select(read_fut, sleep).await,
-                        futures::future::Either::Left((Ok(_), _))
-                    ) {
-                        raw.push_str(&rest);
+                    #[cfg(all(feature = "async_std", not(feature = "async_tokio")))]
+                    {
+                        use std::time::Duration;
+                        let mut limited = reader.take(crate::core::request::BODY_READ_LIMIT_BYTES);
+                        let read_fut = limited.read_to_string(&mut rest);
+                        let sleep = async_std::task::sleep(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
+                        futures::pin_mut!(read_fut, sleep);
+                        if matches!(
+                            futures::future::select(read_fut, sleep).await,
+                            futures::future::Either::Left((Ok(_), _))
+                        ) {
+                            raw.push_str(&rest);
+                        }
                     }
-                }
 
-                #[cfg(all(feature = "async_smol", not(any(feature = "async_tokio", feature = "async_std"))))]
-                {
-                    use std::time::Duration;
-                    let mut limited = reader.take(crate::core::request::BODY_READ_LIMIT_BYTES);
-                    let read_fut = limited.read_to_string(&mut rest);
-                    let sleep = smol::Timer::after(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
-                    futures::pin_mut!(read_fut, sleep);
-                    if matches!(
-                        futures::future::select(read_fut, sleep).await,
-                        futures::future::Either::Left((Ok(_), _))
-                    ) {
-                        raw.push_str(&rest);
+                    #[cfg(all(feature = "async_smol", not(any(feature = "async_tokio", feature = "async_std"))))]
+                    {
+                        use std::time::Duration;
+                        let mut limited = reader.take(crate::core::request::BODY_READ_LIMIT_BYTES);
+                        let read_fut = limited.read_to_string(&mut rest);
+                        let sleep = smol::Timer::after(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
+                        futures::pin_mut!(read_fut, sleep);
+                        if matches!(
+                            futures::future::select(read_fut, sleep).await,
+                            futures::future::Either::Left((Ok(_), _))
+                        ) {
+                            raw.push_str(&rest);
+                        }
+                    }
+                } else {
+                    // No length hints; read opportunistically with a short timeout to avoid hanging.
+                    let mut buf: Vec<u8> = Vec::new();
+
+                    #[cfg(feature = "async_tokio")]
+                    {
+                        use std::time::Duration;
+                        let mut chunk = [0u8; 128];
+                        loop {
+                            let read_fut = reader.read(&mut chunk);
+                            let sleep = tokio::time::sleep(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
+                            futures::pin_mut!(read_fut, sleep);
+                            match futures::future::select(read_fut, sleep).await {
+                                futures::future::Either::Left((Ok(0), _)) => break,
+                                futures::future::Either::Left((Ok(n), _)) => {
+                                    buf.extend_from_slice(&chunk[..n]);
+                                    if buf.len() as u64 >= crate::core::request::BODY_READ_LIMIT_BYTES {
+                                        break;
+                                    }
+                                }
+                                futures::future::Either::Left((Err(_), _)) => break,
+                                futures::future::Either::Right(_) => break,
+                            }
+                        }
+                    }
+
+                    #[cfg(all(feature = "async_std", not(feature = "async_tokio")))]
+                    {
+                        use std::time::Duration;
+                        let mut chunk = [0u8; 128];
+                        loop {
+                            let read_fut = reader.read(&mut chunk);
+                            let sleep = async_std::task::sleep(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
+                            futures::pin_mut!(read_fut, sleep);
+                            match futures::future::select(read_fut, sleep).await {
+                                futures::future::Either::Left((Ok(0), _)) => break,
+                                futures::future::Either::Left((Ok(n), _)) => {
+                                    buf.extend_from_slice(&chunk[..n]);
+                                    if buf.len() as u64 >= crate::core::request::BODY_READ_LIMIT_BYTES {
+                                        break;
+                                    }
+                                }
+                                futures::future::Either::Left((Err(_), _)) => break,
+                                futures::future::Either::Right(_) => break,
+                            }
+                        }
+                    }
+
+                    #[cfg(all(feature = "async_smol", not(any(feature = "async_tokio", feature = "async_std"))))]
+                    {
+                        use std::time::Duration;
+                        let mut chunk = [0u8; 128];
+                        loop {
+                            let read_fut = reader.read(&mut chunk);
+                            let sleep = smol::Timer::after(Duration::from_millis(crate::core::request::READ_TIMEOUT_MS));
+                            futures::pin_mut!(read_fut, sleep);
+                            match futures::future::select(read_fut, sleep).await {
+                                futures::future::Either::Left((Ok(0), _)) => break,
+                                futures::future::Either::Left((Ok(n), _)) => {
+                                    buf.extend_from_slice(&chunk[..n]);
+                                    if buf.len() as u64 >= crate::core::request::BODY_READ_LIMIT_BYTES {
+                                        break;
+                                    }
+                                }
+                                futures::future::Either::Left((Err(_), _)) => break,
+                                futures::future::Either::Right(_) => break,
+                            }
+                        }
+                    }
+
+                    if !buf.is_empty() {
+                        raw.push_str(&String::from_utf8_lossy(&buf));
                     }
                 }
             }
@@ -340,29 +404,45 @@ impl Request {
     let (content_length, has_transfer_encoding) = extract_body_headers(&raw);
     let _ = stream.set_read_timeout(None);
 
-    // Require Content-Length (or Transfer-Encoding) for POST/PUT; avoid blocking on keep-alive.
+    // Require Content-Length when provided; otherwise read with a short timeout to avoid blocking on keep-alive.
     if content_length > 0 {
       // Read exactly content_length
       let mut buf = vec![0; content_length];
       let _ = reader.read_exact(&mut buf);
       raw.push_str(&String::from_utf8_lossy(&buf));
-    } else if method == "POST" || method == "PUT" {
-      if !has_transfer_encoding {
-        return (
-          Self::default(),
-          Some(Response {
-            status: StatusCode::LengthRequired.to_string(),
-            content_type: String::new(),
-            content: Vec::new(),
-          }),
-        );
+    } else if method == "POST" || method == "PUT" || method == "DELETE" {
+      if has_transfer_encoding {
+        // Read all until EOF for POST/PUT/DELETE without Content-Length
+        let mut rest = String::new();
+        let _ = stream.set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS)));
+        let _ = reader.take(BODY_READ_LIMIT_BYTES).read_to_string(&mut rest);
+        let _ = stream.set_read_timeout(None);
+        raw.push_str(&rest);
+      } else {
+        // No Content-Length or Transfer-Encoding; read whatever is readily available.
+        let _ = stream.set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS)));
+        let mut buf: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 128];
+        loop {
+          match reader.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+              buf.extend_from_slice(&chunk[..n]);
+              if buf.len() as u64 >= BODY_READ_LIMIT_BYTES {
+                break;
+              }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {
+              break;
+            }
+            Err(_) => break,
+          }
+        }
+        let _ = stream.set_read_timeout(None);
+        if !buf.is_empty() {
+          raw.push_str(&String::from_utf8_lossy(&buf));
+        }
       }
-      // Read all until EOF for POST/PUT without Content-Length
-      let mut rest = String::new();
-      let _ = stream.set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS)));
-      let _ = reader.take(BODY_READ_LIMIT_BYTES).read_to_string(&mut rest);
-      let _ = stream.set_read_timeout(None);
-      raw.push_str(&rest);
     }
 
     Self::parse_raw_sync(raw, routes, file_bases)
