@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub struct Server {
+  url: &str,
   listener: TcpListener,
   pool: Arc<Mutex<ThreadPool>>,
   routes: HashMap<(Rt, String), Rh>,
@@ -76,11 +77,7 @@ impl Server {
           let close_flag = self.auto_close;
           let pool = Arc::clone(&self.pool);
           pool.lock().unwrap().run(move || {
-            let (mut request, early_resp) = Request::parse_stream_sync(
-              &stream,
-              &routes_local,
-              &sources_local,
-            );
+            let (mut request, early_resp) = Request::parse_stream_sync(&stream, &routes_local, &sources_local);
             let answer = if let Some(resp) = early_resp {
               Some(resp)
             } else {

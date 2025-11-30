@@ -7,9 +7,7 @@ use std::net::TcpStream;
 use std::time::Duration;
 
 fn common_server_definition(server_url: &str) -> Server {
-  let mut server = Server::new(server_url, POOL_SIZE, None)
-    .or_else(|_| Server::new("127.0.0.1:0", POOL_SIZE, None))
-    .expect("failed to bind test server");
+  let mut server = Server::new(server_url, POOL_SIZE, None).expect("failed to bind test server");
   server.add_route("/", Rt::GET, handler!(demo_handle_home));
   server.add_route("/test", Rt::GET, handler!(demo_handle_get));
   server.add_route("/test", Rt::POST, handler!(demo_handle_post));
