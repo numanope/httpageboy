@@ -11,7 +11,7 @@ use std::thread;
 use std::time::Duration;
 
 pub const POOL_SIZE: u8 = 10;
-pub const DEFAULT_TEST_SERVER_URL: &str = "127.0.0.1:48080";
+pub const DEFAULT_TEST_SERVER_URL: &str = "127.0.0.1:0";
 pub const INTERVAL: Duration = Duration::from_millis(250);
 const WAIT_ATTEMPTS: usize = 20;
 const WAIT_DELAY: Duration = Duration::from_millis(100);
