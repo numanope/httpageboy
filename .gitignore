@@ -5,3 +5,4 @@ Cargo.lock
 .cargo_vcs_info.json
 *.code-workspace
 log
+AGENTS*
