@@ -38,18 +38,36 @@ async fn main() {
 
 ## Testing
 
-For synchronous tests:
+The test helpers let you spin servers and hit them with raw HTTP payloads using a single `run_test` function (async or sync, según feature). Ejemplo mínimo (Tokio):
+
+```rust
+use httpageboy::test_utils::{active_test_server_url, run_test, setup_test_server_with_url};
+use httpageboy::Server;
+
+async fn server_factory() -> Server {
+  // tu factory real
+  Server::new(active_test_server_url(), None).await.unwrap()
+}
+
+#[tokio::test]
+async fn test_home_ok() {
+  setup_test_server_with_url(active_test_server_url(), || server_factory()).await;
+  let body = run_test(
+    b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+    b"home",
+    Some(active_test_server_url()),
+  )
+  .await;
+  assert!(body.contains(\"home\"));
+}
+```
+
+Comandos:
 
 ```bash
 cargo test --features sync --test test_sync
-```
-
-For asynchronous tests:
-
-```bash
 cargo test --features async_tokio --test test_async_tokio
 cargo test --features async_std --test test_async_std
-// or
 cargo test --features async_smol --test test_async_smol
 ```
 

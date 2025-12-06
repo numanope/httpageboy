@@ -1,5 +1,5 @@
 #![cfg(feature = "sync")]
-use httpageboy::test_utils::{POOL_SIZE, run_test, setup_test_server};
+use httpageboy::test_utils::{POOL_SIZE, run_test, setup_test_server_with_url};
 use httpageboy::{Request, Response, Rt, Server, StatusCode, handler};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -29,6 +29,22 @@ fn regular_server_definition() -> Server {
 
 fn strict_server_definition() -> Server {
   common_server_definition(STRICT_SERVER_URL)
+}
+
+fn boot_regular() {
+  setup_test_server_with_url(REGULAR_SERVER_URL, || regular_server_definition());
+}
+
+fn boot_strict() {
+  setup_test_server_with_url(STRICT_SERVER_URL, || strict_server_definition());
+}
+
+fn run_regular(request: &[u8], expected: &[u8]) -> String {
+  run_test(request, expected, Some(REGULAR_SERVER_URL))
+}
+
+fn run_strict(request: &[u8], expected: &[u8]) -> String {
+  run_test(request, expected, Some(STRICT_SERVER_URL))
 }
 
 fn demo_handle_home(_request: &Request) -> Response {
@@ -88,71 +104,71 @@ fn demo_handle_delete(_request: &Request) -> Response {
 
 #[test]
 fn test_home() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"GET / HTTP/1.1\r\n\r\n";
   let expected_response = b"home";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_get() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"GET /test HTTP/1.1\r\n\r\n";
   let expected_response = b"get";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_get_with_query() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"GET /test?foo=bar&baz=qux HTTP/1.1\r\n\r\n";
   let expected_response = b"get";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_get_no_content_length() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"GET /test HTTP/1.1\r\n\r\n";
   let expected_response = b"get";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_get_with_content_length_matching_body() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"GET /test HTTP/1.1\r\nContent-Length: 4\r\n\r\nping";
   let expected_response = b"get";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_get_with_content_length_smaller_than_body() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"GET /test HTTP/1.1\r\nContent-Length: 1\r\n\r\npong";
   let expected_response = b"get";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_get_with_content_length_larger_than_body() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"GET /test HTTP/1.1\r\nContent-Length: 10\r\n\r\nhi";
   let expected_response = b"get";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_post() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
   let expected_response = b"Method: POST\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_post_without_content_length_client_keeps_socket_open() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test HTTP/1.1\r\n\r\npayload-open";
   let mut stream = TcpStream::connect(REGULAR_SERVER_URL).expect("connect to test server");
   stream.write_all(request).expect("write request");
@@ -179,242 +195,242 @@ fn test_post_without_content_length_client_keeps_socket_open() {
 
 #[test]
 fn test_post_without_content_length_empty_body() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test HTTP/1.1\r\n\r\n";
   let expected_response = b"Method: POST\nUri: /test\nParams: {}\nBody: \"\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_post_with_query() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test?foo=bar HTTP/1.1\r\n\r\nmueve tu cuerpo";
   let expected_response = b"Method: POST\nUri: /test\nParams: {\"foo\": \"bar\"}\nBody: \"mueve tu cuerpo\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_post_with_content_length() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test HTTP/1.1\r\nContent-Length: 15\r\n\r\nmueve tu cuerpo";
   let expected_response = b"Method: POST\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_post_with_params() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test/hola/que?param4=hoy&param3=hace HTTP/1.1\r\n\r\nmueve tu cuerpo";
   let expected_response =
     b"Method: POST\nUri: /test/hola/que\nParams: {\"param1\": \"hola\", \"param2\": \"que\", \"param3\": \"hace\", \"param4\": \"hoy\"}\nBody: \"mueve tu cuerpo\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_post_with_incomplete_path_params() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test/hola HTTP/1.1\r\n\r\nmueve tu cuerpo";
   let expected_response = b"Method: POST\nUri: /test/hola\nParams: {\"param1\": \"hola\"}\nBody: \"mueve tu cuerpo\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_post_without_content_length_body() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test HTTP/1.1\r\n\r\nbody";
   let expected_response = b"Method: POST\nUri: /test\nParams: {}\nBody: \"body\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_post_with_matching_content_length() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test HTTP/1.1\r\nContent-Length: 4\r\n\r\nbody";
   let expected_response = b"Method: POST\nUri: /test\nParams: {}\nBody: \"body\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_post_with_smaller_content_length() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test HTTP/1.1\r\nContent-Length: 2\r\n\r\nbody";
   let expected_response = b"Method: POST\nUri: /test\nParams: {}\nBody: \"bo\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_post_with_larger_content_length() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"POST /test HTTP/1.1\r\nContent-Length: 10\r\n\r\nbody";
   let expected_response = b"HTTP/1.1 200 OK";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_put() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"PUT /test HTTP/1.1\r\n\r\nmueve tu cuerpo";
   let expected_response = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"mueve tu cuerpo\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_put_without_content_length() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"PUT /test HTTP/1.1\r\n\r\nput";
   let expected_response = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"put\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_put_with_matching_content_length() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"PUT /test HTTP/1.1\r\nContent-Length: 3\r\n\r\nput";
   let expected_response = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"put\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_put_with_smaller_content_length() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"PUT /test HTTP/1.1\r\nContent-Length: 1\r\n\r\nput";
   let expected_response = b"Method: PUT\nUri: /test\nParams: {}\nBody: \"p\"";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_put_with_larger_content_length() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"PUT /test HTTP/1.1\r\nContent-Length: 8\r\n\r\nput";
   let expected_response = b"HTTP/1.1 200 OK";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_delete() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"DELETE /test HTTP/1.1\r\n\r\n";
   let expected_response = b"delete";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_delete_no_content_length() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"DELETE /test HTTP/1.1\r\n\r\n";
   let expected_response = b"delete";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_delete_with_content_length_matching_body() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"DELETE /test HTTP/1.1\r\nContent-Length: 4\r\n\r\nping";
   let expected_response = b"delete";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_delete_with_content_length_smaller_than_body() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"DELETE /test HTTP/1.1\r\nContent-Length: 1\r\n\r\nping";
   let expected_response = b"delete";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_delete_with_content_length_larger_than_body() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"DELETE /test HTTP/1.1\r\nContent-Length: 20\r\n\r\nping";
   let expected_response = b"delete";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_strict_mode_without_content_length() {
-  setup_test_server(STRICT_SERVER_URL, || strict_server_definition());
+  boot_strict();
   let request = b"POST /test HTTP/1.1\r\n\r\npayload";
   let expected_response = b"Method: POST\nUri: /test\nParams: {}\nBody: \"payload\"";
-  run_test(request, expected_response);
+  run_strict(request, expected_response);
 }
 
 #[test]
 fn test_strict_mode_with_content_length() {
-  setup_test_server(STRICT_SERVER_URL, || strict_server_definition());
+  boot_strict();
   let request = b"POST /test HTTP/1.1\r\nContent-Length: 7\r\n\r\npayload";
   let expected_response = b"Method: POST\nUri: /test\nParams: {}\nBody: \"payload\"";
-  run_test(request, expected_response);
+  run_strict(request, expected_response);
 }
 
 #[test]
 fn test_strict_mode_get_without_content_length() {
-  setup_test_server(STRICT_SERVER_URL, || strict_server_definition());
+  boot_strict();
   let request = b"GET /test HTTP/1.1\r\n\r\n";
   let expected_response = b"get";
-  run_test(request, expected_response);
+  run_strict(request, expected_response);
 }
 
 #[test]
 fn test_file_exists() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"GET /numano.png HTTP/1.1\r\nHost: localhost\r\n\r\n";
   let expected_response = b"HTTP/1.1 200 OK";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_file_not_found() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"GET /test.png HTTP/1.1\r\n\r\n";
   let expected_response = b"HTTP/1.1 404 Not Found";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_method_not_allowed() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"BREW /coffee HTTP/1.1\r\n\r\n";
   let expected_response = b"HTTP/1.1 405 Method Not Allowed";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_empty_request() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"";
   let expected_response = b"HTTP/1.1 400 Bad Request";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_malformed_request() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"THIS_IS_NOT_HTTP\r\n\r\n";
   let expected_response = b"HTTP/1.1 400 Bad Request";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_unsupported_http_version() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"GET / HTTP/0.9\r\n\r\n";
   let expected_response = b"HTTP/1.1 505 HTTP Version Not Supported";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
 
 #[test]
 fn test_long_path() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let long_path = "/".to_string() + &"a".repeat(10_000);
   let request = format!("GET {} HTTP/1.1\r\n\r\n", long_path);
   let expected_response = b"HTTP/1.1 414 URI Too Long";
-  run_test(request.as_bytes(), expected_response);
+  run_regular(request.as_bytes(), expected_response);
 }
 
 #[test]
 fn test_missing_method() {
-  setup_test_server(REGULAR_SERVER_URL, || regular_server_definition());
+  boot_regular();
   let request = b"/ HTTP/1.1\r\n\r\n";
   let expected_response = b"HTTP/1.1 400 Bad Request";
-  run_test(request, expected_response);
+  run_regular(request, expected_response);
 }
