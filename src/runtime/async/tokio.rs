@@ -48,8 +48,10 @@ impl Server {
     routes_list: Option<HashMap<(crate::core::request_type::Rt, String), Rh>>,
   ) -> std::io::Result<Self> {
     let listener = TcpListener::bind(serving_url).await?;
+    let url = listener.local_addr()?.to_string();
     Ok(Server(shared::GenericServer {
       listener,
+      url,
       routes: Arc::new(routes_list.unwrap_or_default()),
       files_sources: Arc::new(Vec::new()),
       auto_close: true,
@@ -59,6 +61,10 @@ impl Server {
   /// Returns the socket address the server is currently bound to.
   pub fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> {
     self.listener.local_addr()
+  }
+
+  pub fn url(&self) -> &str {
+    self.0.url.as_str()
   }
 
   /// Starts the server and begins accepting connections.

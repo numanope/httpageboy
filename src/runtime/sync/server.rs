@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub struct Server {
-  url: &str,
+  url: String,
   listener: TcpListener,
   pool: Arc<Mutex<ThreadPool>>,
   routes: HashMap<(Rt, String), Rh>,
@@ -30,10 +30,12 @@ impl Server {
     routes_list: Option<HashMap<(Rt, String), Rh>>,
   ) -> Result<Server, std::io::Error> {
     let listener = TcpListener::bind(serving_url)?;
+    let url = listener.local_addr()?.to_string();
     let pool = Arc::new(Mutex::new(ThreadPool::new(pool_size as usize)));
     let routes = routes_list.unwrap_or_default();
 
     Ok(Server {
+      url,
       listener,
       pool,
       routes,
@@ -44,6 +46,10 @@ impl Server {
 
   pub fn set_auto_close(&mut self, state: bool) {
     self.auto_close = state;
+  }
+
+  pub fn url(&self) -> &str {
+    self.url.as_str()
   }
 
   pub fn local_addr(&self) -> std::io::Result<SocketAddr> {

@@ -43,6 +43,7 @@ pub async fn send_response<S: AsyncStream>(stream: &mut S, resp: &Response, clos
 /// This allows us to share the server logic between the different async runtimes.
 pub struct GenericServer<L> {
   pub listener: L,
+  pub url: String,
   pub routes: Arc<HashMap<(Rt, String), Rh>>,
   pub files_sources: Arc<Vec<String>>,
   pub auto_close: bool,
@@ -59,6 +60,10 @@ impl<L> GenericServer<L> {
     Arc::get_mut(&mut self.routes)
       .unwrap()
       .insert((rt, path.to_string()), Rh { handler });
+  }
+
+  pub fn url(&self) -> &str {
+    self.url.as_str()
   }
 
   /// Adds a new directory to serve static files from.
