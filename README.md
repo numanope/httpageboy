@@ -41,7 +41,7 @@ async fn main() {
 The test helpers let you spin servers and hit them with raw HTTP payloads using a single `run_test` function (async or sync, según feature). Ejemplo mínimo (Tokio):
 
 ```rust
-use httpageboy::test_utils::{active_test_server_url, run_test, setup_test_server_with_url};
+use httpageboy::test_utils::{active_test_server_url, run_test, setup_test_server};
 use httpageboy::Server;
 
 async fn server_factory() -> Server {
@@ -51,7 +51,7 @@ async fn server_factory() -> Server {
 
 #[tokio::test]
 async fn test_home_ok() {
-  setup_test_server_with_url(active_test_server_url(), || server_factory()).await;
+  setup_test_server(Some(active_test_server_url()), || server_factory()).await;
   let body = run_test(
     b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
     b"home",

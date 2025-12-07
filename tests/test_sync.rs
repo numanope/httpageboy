@@ -1,5 +1,5 @@
 #![cfg(feature = "sync")]
-use httpageboy::test_utils::{POOL_SIZE, run_test, setup_test_server_with_url};
+use httpageboy::test_utils::{POOL_SIZE, run_test, setup_test_server};
 use httpageboy::{Request, Response, Rt, Server, StatusCode, handler};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -32,11 +32,11 @@ fn strict_server_definition() -> Server {
 }
 
 fn boot_regular() {
-  setup_test_server_with_url(REGULAR_SERVER_URL, || regular_server_definition());
+  setup_test_server(Some(REGULAR_SERVER_URL), || regular_server_definition());
 }
 
 fn boot_strict() {
-  setup_test_server_with_url(STRICT_SERVER_URL, || strict_server_definition());
+  setup_test_server(Some(STRICT_SERVER_URL), || strict_server_definition());
 }
 
 fn run_regular(request: &[u8], expected: &[u8]) -> String {

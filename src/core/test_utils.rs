@@ -7,13 +7,33 @@ use std::net::TcpStream;
 #[cfg(any(feature = "async_tokio", feature = "async_std", feature = "async_smol"))]
 use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
+#[cfg(any(
+  feature = "sync",
+  feature = "async_tokio",
+  feature = "async_std",
+  feature = "async_smol"
+))]
 use std::thread;
 use std::time::Duration;
 
 pub const POOL_SIZE: u8 = 10;
 pub const DEFAULT_TEST_SERVER_URL: &str = "127.0.0.1:0";
 pub const INTERVAL: Duration = Duration::from_millis(250);
+
+#[cfg(any(
+  feature = "sync",
+  feature = "async_tokio",
+  feature = "async_std",
+  feature = "async_smol"
+))]
 const WAIT_ATTEMPTS: usize = 20;
+
+#[cfg(any(
+  feature = "sync",
+  feature = "async_tokio",
+  feature = "async_std",
+  feature = "async_smol"
+))]
 const WAIT_DELAY: Duration = Duration::from_millis(100);
 
 static LAST_ACTIVE_URL: OnceLock<Mutex<Option<&'static str>>> = OnceLock::new();
@@ -121,18 +141,11 @@ fn perform_test(url: &str, request: &[u8], expected_response: &[u8]) -> String {
 }
 
 #[cfg(feature = "sync")]
-pub fn setup_test_server<F>(server_factory: F)
+pub fn setup_test_server<F>(server_url: Option<&str>, server_factory: F)
 where
   F: FnOnce() -> Server + Send + 'static,
 {
-  setup_test_server_with_url(active_test_server_url(), server_factory);
-}
-
-#[cfg(feature = "sync")]
-pub fn setup_test_server_with_url<F>(server_url: &str, server_factory: F)
-where
-  F: FnOnce() -> Server + Send + 'static,
-{
+  let server_url = server_url.unwrap_or_else(active_test_server_url);
   let mut registry = registry_guard();
   if let Some(url) = registry.get(server_url) {
     set_active_url(*url);
@@ -162,20 +175,12 @@ pub fn run_test(request: &[u8], expected_response: &[u8], target_url: Option<&st
 
 // async_tokio
 #[cfg(all(feature = "async_tokio", not(feature = "sync")))]
-pub async fn setup_test_server<F, Fut>(server_factory: F)
+pub async fn setup_test_server<F, Fut>(server_url: Option<&str>, server_factory: F)
 where
   F: FnOnce() -> Fut + Send + 'static,
   Fut: std::future::Future<Output = Server> + Send + 'static,
 {
-  setup_test_server_with_url(active_test_server_url(), server_factory).await;
-}
-
-#[cfg(all(feature = "async_tokio", not(feature = "sync")))]
-pub async fn setup_test_server_with_url<F, Fut>(server_url: &str, server_factory: F)
-where
-  F: FnOnce() -> Fut + Send + 'static,
-  Fut: std::future::Future<Output = Server> + Send + 'static,
-{
+  let server_url = server_url.unwrap_or_else(active_test_server_url);
   let mut registry = registry_guard();
   if let Some(url) = registry.get(server_url) {
     set_active_url(*url);
@@ -250,20 +255,12 @@ pub async fn run_test(request: &[u8], expected_response: &[u8], target_url: Opti
 
 // async_std
 #[cfg(all(feature = "async_std", not(any(feature = "sync", feature = "async_tokio"))))]
-pub async fn setup_test_server<F, Fut>(server_factory: F)
+pub async fn setup_test_server<F, Fut>(server_url: Option<&str>, server_factory: F)
 where
   F: FnOnce() -> Fut + Send + 'static,
   Fut: std::future::Future<Output = Server> + Send + 'static,
 {
-  setup_test_server_with_url(active_test_server_url(), server_factory).await;
-}
-
-#[cfg(all(feature = "async_std", not(any(feature = "sync", feature = "async_tokio"))))]
-pub async fn setup_test_server_with_url<F, Fut>(server_url: &str, server_factory: F)
-where
-  F: FnOnce() -> Fut + Send + 'static,
-  Fut: std::future::Future<Output = Server> + Send + 'static,
-{
+  let server_url = server_url.unwrap_or_else(active_test_server_url);
   let mut registry = registry_guard();
   if let Some(url) = registry.get(server_url) {
     set_active_url(*url);
@@ -337,23 +334,12 @@ pub async fn run_test(request: &[u8], expected_response: &[u8], target_url: Opti
   feature = "async_smol",
   not(any(feature = "sync", feature = "async_tokio", feature = "async_std"))
 ))]
-pub async fn setup_test_server<F, Fut>(server_factory: F)
+pub async fn setup_test_server<F, Fut>(server_url: Option<&str>, server_factory: F)
 where
   F: FnOnce() -> Fut + Send + 'static,
   Fut: std::future::Future<Output = Server> + Send + 'static,
 {
-  setup_test_server_with_url(active_test_server_url(), server_factory).await;
-}
-
-#[cfg(all(
-  feature = "async_smol",
-  not(any(feature = "sync", feature = "async_tokio", feature = "async_std"))
-))]
-pub async fn setup_test_server_with_url<F, Fut>(server_url: &str, server_factory: F)
-where
-  F: FnOnce() -> Fut + Send + 'static,
-  Fut: std::future::Future<Output = Server> + Send + 'static,
-{
+  let server_url = server_url.unwrap_or_else(active_test_server_url);
   let mut registry = registry_guard();
   if let Some(url) = registry.get(server_url) {
     set_active_url(*url);

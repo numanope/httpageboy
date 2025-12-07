@@ -1,6 +1,6 @@
 #![cfg(feature = "async_tokio")]
 
-use httpageboy::test_utils::{run_test, setup_test_server_with_url};
+use httpageboy::test_utils::{run_test, setup_test_server};
 use httpageboy::{Request, Response, Rt, Server, StatusCode, handler};
 use std::collections::BTreeMap;
 
@@ -39,11 +39,11 @@ async fn create_test_server() -> Server {
 }
 
 async fn boot_regular() {
-  setup_test_server_with_url(REGULAR_SERVER_URL, || create_test_server()).await;
+  setup_test_server(Some(REGULAR_SERVER_URL), || create_test_server()).await;
 }
 
 async fn boot_strict() {
-  setup_test_server_with_url(STRICT_SERVER_URL, || strict_server_definition()).await;
+  setup_test_server(Some(STRICT_SERVER_URL), || strict_server_definition()).await;
 }
 
 async fn run_regular(request: &[u8], expected: &[u8]) -> String {
