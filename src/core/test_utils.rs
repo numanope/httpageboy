@@ -145,7 +145,7 @@ pub fn setup_test_server<F>(server_url: Option<&str>, server_factory: F)
 where
   F: FnOnce() -> Server + Send + 'static,
 {
-  let server_url = server_url.unwrap_or_else(active_test_server_url);
+  let server_url = server_url.unwrap_or_else(|| active_test_server_url());
   let mut registry = registry_guard();
   if let Some(url) = registry.get(server_url) {
     set_active_url(*url);
@@ -180,7 +180,7 @@ where
   F: FnOnce() -> Fut + Send + 'static,
   Fut: std::future::Future<Output = Server> + Send + 'static,
 {
-  let server_url = server_url.unwrap_or_else(active_test_server_url);
+  let server_url = server_url.unwrap_or_else(|| active_test_server_url());
   let mut registry = registry_guard();
   if let Some(url) = registry.get(server_url) {
     set_active_url(*url);
@@ -260,7 +260,7 @@ where
   F: FnOnce() -> Fut + Send + 'static,
   Fut: std::future::Future<Output = Server> + Send + 'static,
 {
-  let server_url = server_url.unwrap_or_else(active_test_server_url);
+  let server_url = server_url.unwrap_or_else(|| active_test_server_url());
   let mut registry = registry_guard();
   if let Some(url) = registry.get(server_url) {
     set_active_url(*url);
@@ -339,7 +339,7 @@ where
   F: FnOnce() -> Fut + Send + 'static,
   Fut: std::future::Future<Output = Server> + Send + 'static,
 {
-  let server_url = server_url.unwrap_or_else(active_test_server_url);
+  let server_url = server_url.unwrap_or_else(|| active_test_server_url());
   let mut registry = registry_guard();
   if let Some(url) = registry.get(server_url) {
     set_active_url(*url);
