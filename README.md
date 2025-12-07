@@ -12,7 +12,7 @@ The core logic resides in `src/lib.rs`.
 
 The following example is executable. Run `cargo run` to see the available variants and navigate to [http://127.0.0.1:7878](http://127.0.0.1:7878) in your browser.
 
-A basic server setup:
+A basic server setup (select a runtime feature when running, e.g. `cargo run --features async_tokio`):
 
 ```rust
 #![cfg(feature = "async_tokio")]
@@ -38,27 +38,36 @@ async fn main() {
 
 ## Testing
 
-The test helpers let you spin servers and hit them with raw HTTP payloads using a single `run_test` function (async or sync, según feature). Ejemplo mínimo (Tokio):
+Test helpers live in `httpageboy::test_utils` and work the same for sync and async runtimes:
+- `setup_test_server(server_url, factory)` starts a server once per URL and marks it active (pass `None` to reuse the default `127.0.0.1:0` and let the OS pick a port).
+- `run_test(request, expected, target_url)` opens a TCP connection to the active server (or the URL you pass), writes a raw HTTP payload, and asserts the response contains the expected bytes.
+
+Async tokio example mirroring the current helpers:
 
 ```rust
-use httpageboy::test_utils::{active_test_server_url, run_test, setup_test_server};
-use httpageboy::Server;
+#![cfg(feature = "async_tokio")]
+use httpageboy::test_utils::{run_test, setup_test_server};
+use httpageboy::{handler, Request, Response, Rt, Server, StatusCode};
 
 async fn server_factory() -> Server {
-  // tu factory real
-  Server::new(active_test_server_url(), None).await.unwrap()
+  let mut server = Server::new("127.0.0.1:0", None).await.unwrap();
+  server.add_route("/", Rt::GET, handler!(home));
+  server
+}
+
+async fn home(_req: &Request) -> Response {
+  Response {
+    status: StatusCode::Ok.to_string(),
+    content_type: "text/plain".into(),
+    content: b"home".to_vec(),
+  }
 }
 
 #[tokio::test]
 async fn test_home_ok() {
-  setup_test_server(Some(active_test_server_url()), || server_factory()).await;
-  let body = run_test(
-    b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-    b"home",
-    Some(active_test_server_url()),
-  )
-  .await;
-  assert!(body.contains(\"home\"));
+  setup_test_server(None, || server_factory()).await;
+  let body = run_test(b"GET / HTTP/1.1\r\n\r\n", b"home", None).await;
+  assert!(body.contains("home"));
 }
 ```
 
