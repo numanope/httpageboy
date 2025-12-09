@@ -6,3 +6,4 @@ pub mod response;
 pub mod status_code;
 pub mod test_utils;
 pub mod utils;
+pub mod cors;

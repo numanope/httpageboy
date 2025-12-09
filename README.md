@@ -71,6 +71,19 @@ async fn test_home_ok() {
 }
 ```
 
+## CORS
+
+Servers now ship with a permissive CORS policy by default (allow all origins, methods, and common headers). You can tighten it after constructing the server:
+
+```rust
+let mut server = Server::new("127.0.0.1:7878", None).await.unwrap();
+server.set_cors_str("origin=http://localhost:3000,credentials=true,headers=Content-Type");
+// or build it directly:
+// server.set_cors(CorsPolicy::from_config_str("origin=http://localhost:3000"));
+```
+
+Preflights (OPTIONS) are answered automatically using the active policy.
+
 Comandos:
 
 ```bash

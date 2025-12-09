@@ -1,4 +1,5 @@
 use crate::core::handler::Handler;
+use crate::core::cors::CorsPolicy;
 use crate::core::request_handler::Rh;
 use crate::core::request_type::Rt;
 use crate::core::response::Response;
@@ -17,15 +18,26 @@ pub trait AsyncStream: Send + Sync {
 }
 
 /// Sends a response to the client over the given stream.
-pub async fn send_response<S: AsyncStream>(stream: &mut S, resp: &Response, close: bool) {
+pub async fn send_response<S: AsyncStream>(
+  stream: &mut S,
+  resp: &Response,
+  close: bool,
+  cors: Option<&CorsPolicy>,
+) {
   let conn_hdr = if close { "Connection: close\r\n" } else { "" };
-  let head = format!(
-    "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}\r\n",
+  let mut head = format!(
+    "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}",
     resp.status,
     resp.content_type,
     resp.content.len(),
     conn_hdr,
   );
+  if let Some(policy) = cors {
+    for (k, v) in policy.header_lines() {
+      head.push_str(&format!("{}: {}\r\n", k, v));
+    }
+  }
+  head.push_str("\r\n");
   let _ = stream.write_all(head.as_bytes()).await;
   if resp.content_type.starts_with("image/") {
     let _ = stream.write_all(&resp.content).await;
@@ -47,6 +59,7 @@ pub struct GenericServer<L> {
   pub routes: Arc<HashMap<(Rt, String), Rh>>,
   pub files_sources: Arc<Vec<String>>,
   pub auto_close: bool,
+  pub cors: Option<Arc<CorsPolicy>>,
 }
 
 impl<L> GenericServer<L> {

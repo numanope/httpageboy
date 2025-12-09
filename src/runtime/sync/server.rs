@@ -1,5 +1,6 @@
 #![cfg(feature = "sync")]
 
+use crate::core::cors::CorsPolicy;
 use crate::core::handler::Handler;
 use crate::core::request::{Request, handle_request_sync};
 use crate::core::request_handler::Rh;
@@ -21,6 +22,7 @@ pub struct Server {
   routes: HashMap<(Rt, String), Rh>,
   files_sources: Vec<String>,
   auto_close: bool,
+  cors: Option<Arc<CorsPolicy>>,
 }
 
 impl Server {
@@ -41,11 +43,20 @@ impl Server {
       routes,
       files_sources: Vec::new(),
       auto_close: true,
+      cors: Some(Arc::new(CorsPolicy::default())),
     })
   }
 
   pub fn set_auto_close(&mut self, state: bool) {
     self.auto_close = state;
+  }
+
+  pub fn set_cors(&mut self, policy: CorsPolicy) {
+    self.cors = Some(Arc::new(policy));
+  }
+
+  pub fn set_cors_str(&mut self, config: &str) {
+    self.set_cors(CorsPolicy::from_config_str(config));
   }
 
   pub fn url(&self) -> &str {
@@ -81,17 +92,27 @@ impl Server {
           let routes_local = self.routes.clone();
           let sources_local = self.files_sources.clone();
           let close_flag = self.auto_close;
+          let cors_policy = self.cors.clone();
           let pool = Arc::clone(&self.pool);
           pool.lock().unwrap().run(move || {
             let (mut request, early_resp) = Request::parse_stream_sync(&stream, &routes_local, &sources_local);
-            let answer = if let Some(resp) = early_resp {
-              Some(resp)
-            } else {
-              handle_request_sync(&mut request, &routes_local, &sources_local)
+            let method = request.method.clone();
+            let preflight = match (cors_policy.as_ref(), method) {
+              (Some(_), crate::core::request_type::RequestType::OPTIONS) => {
+                Some(Self::preflight_response(cors_policy.as_deref()))
+              }
+              _ => None,
             };
+            let answer = preflight.or_else(|| {
+              if let Some(resp) = early_resp {
+                Some(resp)
+              } else {
+                handle_request_sync(&mut request, &routes_local, &sources_local)
+              }
+            });
             match answer {
-              Some(response) => Self::send_response(stream, &response, close_flag),
-              None => Self::send_response(stream, &Response::new(), close_flag),
+              Some(response) => Self::send_response(stream, &response, close_flag, cors_policy.as_deref()),
+              None => Self::send_response(stream, &Response::new(), close_flag, cors_policy.as_deref()),
             }
           });
         }
@@ -107,15 +128,28 @@ impl Server {
     pool.stop();
   }
 
-  fn send_response(mut stream: TcpStream, response: &Response, close: bool) {
+  fn preflight_response(cors: Option<&CorsPolicy>) -> Response {
+    if let Some(policy) = cors {
+      return policy.preflight_response();
+    }
+    Response::new()
+  }
+
+  fn send_response(mut stream: TcpStream, response: &Response, close: bool, cors: Option<&CorsPolicy>) {
     let connection_header = if close { "Connection: close\r\n" } else { "" };
-    let header = format!(
-      "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}\r\n",
+    let mut header = format!(
+      "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}",
       response.status,
       response.content_type,
       response.content.len(),
       connection_header
     );
+    if let Some(policy) = cors {
+      for (k, v) in policy.header_lines() {
+        header.push_str(&format!("{}: {}\r\n", k, v));
+      }
+    }
+    header.push_str("\r\n");
     let _ = stream.write_all(header.as_bytes());
 
     if response.content_type.starts_with("image/") {

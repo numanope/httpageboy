@@ -1,4 +1,5 @@
 use super::shared;
+use crate::core::cors::CorsPolicy;
 use crate::core::request::handle_request_async;
 use crate::core::request_handler::Rh;
 use crate::core::response::Response;
@@ -55,6 +56,7 @@ impl Server {
       routes: Arc::new(routes_list.unwrap_or_default()),
       files_sources: Arc::new(Vec::new()),
       auto_close: true,
+      cors: Some(Arc::new(CorsPolicy::default())),
     }))
   }
 
@@ -67,6 +69,14 @@ impl Server {
     self.0.url.as_str()
   }
 
+  pub fn set_cors(&mut self, policy: CorsPolicy) {
+    self.0.cors = Some(Arc::new(policy));
+  }
+
+  pub fn set_cors_str(&mut self, config: &str) {
+    self.set_cors(CorsPolicy::from_config_str(config));
+  }
+
   /// Starts the server and begins accepting connections.
   pub async fn run(&self) {
     print_server_info(self.listener.local_addr().unwrap(), self.auto_close);
@@ -75,6 +85,7 @@ impl Server {
         let routes = self.routes.clone();
         let sources = self.files_sources.clone();
         let close_flag = self.auto_close;
+        let cors_policy = self.cors.clone();
 
         tokio::spawn(async move {
           let (mut req, early) = crate::core::request::parse_stream_tokio(
@@ -83,13 +94,24 @@ impl Server {
             &sources,
           )
           .await;
-          let resp = match early {
-            Some(r) => r,
-            None => handle_request_async(&mut req, &routes, &sources)
-              .await
-              .unwrap_or_else(Response::new),
+          let method = req.method.clone();
+          let preflight = match (cors_policy.as_ref(), method) {
+            (Some(policy), crate::core::request_type::RequestType::OPTIONS) => {
+              Some(policy.preflight_response())
+            }
+            _ => None,
           };
-          shared::send_response(&mut stream, &resp, close_flag).await;
+          let resp = if let Some(p) = preflight {
+            p
+          } else {
+            match early {
+              Some(r) => r,
+              None => handle_request_async(&mut req, &routes, &sources)
+                .await
+                .unwrap_or_else(Response::new),
+            }
+          };
+          shared::send_response(&mut stream, &resp, close_flag, cors_policy.as_deref()).await;
         });
       }
     }
