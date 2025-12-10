@@ -47,18 +47,34 @@ impl CorsPolicy {
     policy
   }
 
-  pub fn header_lines(&self) -> Vec<(String, String)> {
-    let mut headers = vec![
-      ("Access-Control-Allow-Origin".to_string(), self.allow_origin.clone()),
-      (
+  fn allowed_origin(&self, request_origin: Option<&str>) -> Option<String> {
+    if self.allow_origin == "*" {
+      return Some("*".to_string());
+    }
+    let req_origin = request_origin?;
+    let mut allowed = self
+      .allow_origin
+      .split(',')
+      .map(|s| s.trim())
+      .filter(|s| !s.is_empty());
+    allowed
+      .find(|o| o.eq_ignore_ascii_case(req_origin))
+      .map(|_| req_origin.to_string())
+  }
+
+  pub fn header_lines(&self, request_origin: Option<&str>) -> Vec<(String, String)> {
+    let mut headers = Vec::new();
+    if let Some(origin) = self.allowed_origin(request_origin) {
+      headers.push(("Access-Control-Allow-Origin".to_string(), origin));
+      headers.push((
         "Access-Control-Allow-Methods".to_string(),
         self.allow_methods.clone(),
-      ),
-      (
+      ));
+      headers.push((
         "Access-Control-Allow-Headers".to_string(),
         self.allow_headers.clone(),
-      ),
-    ];
+      ));
+    }
     if self.allow_credentials {
       headers.push((
         "Access-Control-Allow-Credentials".to_string(),

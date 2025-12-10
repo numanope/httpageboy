@@ -94,6 +94,7 @@ impl Server {
           &files,
         )
         .await;
+        let origin = req.origin().map(str::to_string);
         let method = req.method.clone();
         let preflight = match (cors_policy.as_ref(), method) {
           (Some(policy), crate::core::request_type::RequestType::OPTIONS) => {
@@ -111,7 +112,14 @@ impl Server {
               .unwrap_or_else(Response::new),
           }
         };
-        shared::send_response(&mut stream, &resp, close_flag, cors_policy.as_deref()).await;
+        shared::send_response(
+          &mut stream,
+          &resp,
+          close_flag,
+          cors_policy.as_deref(),
+          origin.as_deref(),
+        )
+        .await;
       });
     }
   }

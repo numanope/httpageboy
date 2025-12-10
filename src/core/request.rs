@@ -368,6 +368,14 @@ impl Request {
     sorted.into_iter().collect()
   }
 
+  pub fn origin(&self) -> Option<&str> {
+    self
+      .headers
+      .iter()
+      .find(|(k, _)| k.eq_ignore_ascii_case("origin"))
+      .map(|(_, v)| v.as_str())
+  }
+
   #[cfg(feature = "sync")]
   pub fn parse_stream_sync(
     stream: &TcpStream,
@@ -478,7 +486,7 @@ impl Request {
     let method_str = parts[0];
     let path_str = parts[1];
     let version = parts[2];
-    let allowed = ["GET", "POST", "PUT", "DELETE"];
+    let allowed = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"];
     if !allowed.contains(&method_str) {
       return (
         Self::default(),
@@ -545,7 +553,7 @@ impl Request {
     let method_str = parts[0];
     let path_str = parts[1];
     let version = parts[2];
-    let allowed = ["GET", "POST", "PUT", "DELETE"];
+    let allowed = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"];
     if !allowed.contains(&method_str) {
       return (
         Self::default(),

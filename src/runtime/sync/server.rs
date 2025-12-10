@@ -96,6 +96,7 @@ impl Server {
           let pool = Arc::clone(&self.pool);
           pool.lock().unwrap().run(move || {
             let (mut request, early_resp) = Request::parse_stream_sync(&stream, &routes_local, &sources_local);
+            let origin = request.origin().map(str::to_string);
             let method = request.method.clone();
             let preflight = match (cors_policy.as_ref(), method) {
               (Some(_), crate::core::request_type::RequestType::OPTIONS) => {
@@ -111,8 +112,20 @@ impl Server {
               }
             });
             match answer {
-              Some(response) => Self::send_response(stream, &response, close_flag, cors_policy.as_deref()),
-              None => Self::send_response(stream, &Response::new(), close_flag, cors_policy.as_deref()),
+              Some(response) => Self::send_response(
+                stream,
+                &response,
+                close_flag,
+                cors_policy.as_deref(),
+                origin.as_deref(),
+              ),
+              None => Self::send_response(
+                stream,
+                &Response::new(),
+                close_flag,
+                cors_policy.as_deref(),
+                origin.as_deref(),
+              ),
             }
           });
         }
@@ -135,7 +148,13 @@ impl Server {
     Response::new()
   }
 
-  fn send_response(mut stream: TcpStream, response: &Response, close: bool, cors: Option<&CorsPolicy>) {
+  fn send_response(
+    mut stream: TcpStream,
+    response: &Response,
+    close: bool,
+    cors: Option<&CorsPolicy>,
+    origin: Option<&str>,
+  ) {
     let connection_header = if close { "Connection: close\r\n" } else { "" };
     let mut header = format!(
       "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}",
@@ -145,7 +164,7 @@ impl Server {
       connection_header
     );
     if let Some(policy) = cors {
-      for (k, v) in policy.header_lines() {
+      for (k, v) in policy.header_lines(origin) {
         header.push_str(&format!("{}: {}\r\n", k, v));
       }
     }

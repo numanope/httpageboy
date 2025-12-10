@@ -23,6 +23,7 @@ pub async fn send_response<S: AsyncStream>(
   resp: &Response,
   close: bool,
   cors: Option<&CorsPolicy>,
+  origin: Option<&str>,
 ) {
   let conn_hdr = if close { "Connection: close\r\n" } else { "" };
   let mut head = format!(
@@ -33,7 +34,7 @@ pub async fn send_response<S: AsyncStream>(
     conn_hdr,
   );
   if let Some(policy) = cors {
-    for (k, v) in policy.header_lines() {
+    for (k, v) in policy.header_lines(origin) {
       head.push_str(&format!("{}: {}\r\n", k, v));
     }
   }
