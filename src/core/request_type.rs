@@ -12,6 +12,7 @@ pub enum RequestType {
   OPTIONS,
   CONNECT,
   PATCH,
+  TRACE,
 }
 
 impl Display for RequestType {
@@ -31,6 +32,7 @@ impl RequestType {
       "OPTIONS" => RequestType::OPTIONS,
       "CONNECT" => RequestType::CONNECT,
       "PATCH" => RequestType::PATCH,
+      "TRACE" => RequestType::TRACE,
       _ => RequestType::GET,
     }
   }

@@ -97,22 +97,23 @@ impl Server {
           .await;
           let origin = req.origin().map(str::to_string);
           let method = req.method.clone();
-          let preflight = match (cors_policy.as_ref(), method) {
-            (Some(policy), crate::core::request_type::RequestType::OPTIONS) => {
-              Some(policy.preflight_response())
-            }
-            _ => None,
-          };
-          let resp = if let Some(p) = preflight {
-            p
-            } else {
-              match early {
-                Some(r) => r,
-                None => handle_request_async(&mut req, &routes, &files)
-                  .await
-                  .unwrap_or_else(Response::new),
+          let resp = match early {
+            Some(r) => r,
+            None => {
+              let routed = handle_request_async(&mut req, &routes, &files).await;
+              if routed.is_none()
+                && method == crate::core::request_type::RequestType::OPTIONS
+                && cors_policy.is_some()
+              {
+                cors_policy
+                  .as_deref()
+                  .map(|policy| policy.preflight_response())
+                  .unwrap_or_else(Response::new)
+              } else {
+                routed.unwrap_or_else(Response::new)
               }
-            };
+            }
+          };
           shared::send_response(
             &mut stream,
             &resp,

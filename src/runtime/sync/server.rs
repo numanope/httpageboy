@@ -97,20 +97,20 @@ impl Server {
           pool.lock().unwrap().run(move || {
             let (mut request, early_resp) = Request::parse_stream_sync(&stream, &routes_local, &sources_local);
             let origin = request.origin().map(str::to_string);
-            let method = request.method.clone();
-            let preflight = match (cors_policy.as_ref(), method) {
-              (Some(_), crate::core::request_type::RequestType::OPTIONS) => {
-                Some(Self::preflight_response(cors_policy.as_deref()))
-              }
-              _ => None,
-            };
-            let answer = preflight.or_else(|| {
-              if let Some(resp) = early_resp {
-                Some(resp)
-              } else {
-                handle_request_sync(&mut request, &routes_local, &sources_local)
-              }
-            });
+          let method = request.method.clone();
+          let answer = if let Some(resp) = early_resp {
+            Some(resp)
+          } else {
+            let routed = handle_request_sync(&mut request, &routes_local, &sources_local);
+            if routed.is_none()
+              && method == crate::core::request_type::RequestType::OPTIONS
+              && cors_policy.is_some()
+            {
+              Some(Self::preflight_response(cors_policy.as_deref()))
+            } else {
+              routed
+            }
+          };
             match answer {
               Some(response) => Self::send_response(
                 stream,

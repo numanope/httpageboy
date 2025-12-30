@@ -89,15 +89,15 @@ macro_rules! create_async_parse_stream {
 
             let (content_length, has_transfer_encoding) = crate::core::request::extract_body_headers(&raw);
 
-            // Read declared body size. For POST/PUT/DELETE without Content-Length or Transfer-Encoding, fall back to a timed read.
+            // Read declared body size. For POST/PUT/DELETE/PATCH without Content-Length or Transfer-Encoding, fall back to a timed read.
             if content_length > 0 {
                 // Read exactly content_length bytes
                 let mut buf = vec![0; content_length];
                 let _ = reader.read_exact(&mut buf).await;
                 raw.push_str(&String::from_utf8_lossy(&buf));
-            } else if method == "POST" || method == "PUT" || method == "DELETE" {
+            } else if method == "POST" || method == "PUT" || method == "DELETE" || method == "PATCH" {
                 if has_transfer_encoding {
-                    // Read all until EOF for POST/PUT/DELETE with Transfer-Encoding and without Content-Length
+                    // Read all until EOF for POST/PUT/DELETE/PATCH with Transfer-Encoding and without Content-Length
                     let mut rest = String::new();
 
                     #[cfg(feature = "async_tokio")]
@@ -418,9 +418,9 @@ impl Request {
       let mut buf = vec![0; content_length];
       let _ = reader.read_exact(&mut buf);
       raw.push_str(&String::from_utf8_lossy(&buf));
-    } else if method == "POST" || method == "PUT" || method == "DELETE" {
+    } else if method == "POST" || method == "PUT" || method == "DELETE" || method == "PATCH" {
       if has_transfer_encoding {
-        // Read all until EOF for POST/PUT/DELETE without Content-Length
+        // Read all until EOF for POST/PUT/DELETE/PATCH without Content-Length
         let mut rest = String::new();
         let _ = stream.set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS)));
         let _ = reader.take(BODY_READ_LIMIT_BYTES).read_to_string(&mut rest);
@@ -486,7 +486,7 @@ impl Request {
     let method_str = parts[0];
     let path_str = parts[1];
     let version = parts[2];
-    let allowed = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"];
+    let allowed = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH", "CONNECT", "TRACE"];
     if !allowed.contains(&method_str) {
       return (
         Self::default(),
@@ -553,7 +553,7 @@ impl Request {
     let method_str = parts[0];
     let path_str = parts[1];
     let version = parts[2];
-    let allowed = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"];
+    let allowed = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH", "CONNECT", "TRACE"];
     if !allowed.contains(&method_str) {
       return (
         Self::default(),

@@ -17,7 +17,12 @@ fn common_server_definition(server_url: &str) -> Server {
   server.add_route("/test/{param1}", Rt::POST, handler!(demo_handle_post));
   server.add_route("/test/{param1}/{param2}", Rt::POST, handler!(demo_handle_post));
   server.add_route("/test", Rt::PUT, handler!(demo_handle_put));
+  server.add_route("/test", Rt::PATCH, handler!(demo_handle_put));
   server.add_route("/test", Rt::DELETE, handler!(demo_handle_delete));
+  server.add_route("/test", Rt::HEAD, handler!(demo_handle_head));
+  server.add_route("/test", Rt::OPTIONS, handler!(demo_handle_options));
+  server.add_route("/test", Rt::CONNECT, handler!(demo_handle_connect));
+  server.add_route("/test", Rt::TRACE, handler!(demo_handle_trace));
   let res_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("res");
   server.add_files_source(res_path.to_str().unwrap());
   server
@@ -99,6 +104,38 @@ fn demo_handle_delete(_request: &Request) -> Response {
     status: StatusCode::Ok.to_string(),
     content_type: String::new(),
     content: "delete".as_bytes().to_vec(),
+  }
+}
+
+fn demo_handle_head(_request: &Request) -> Response {
+  Response {
+    status: StatusCode::Ok.to_string(),
+    content_type: String::new(),
+    content: "head".as_bytes().to_vec(),
+  }
+}
+
+fn demo_handle_options(_request: &Request) -> Response {
+  Response {
+    status: StatusCode::Ok.to_string(),
+    content_type: String::new(),
+    content: "options".as_bytes().to_vec(),
+  }
+}
+
+fn demo_handle_connect(_request: &Request) -> Response {
+  Response {
+    status: StatusCode::Ok.to_string(),
+    content_type: String::new(),
+    content: "connect".as_bytes().to_vec(),
+  }
+}
+
+fn demo_handle_trace(_request: &Request) -> Response {
+  Response {
+    status: StatusCode::Ok.to_string(),
+    content_type: String::new(),
+    content: "trace".as_bytes().to_vec(),
   }
 }
 
@@ -307,6 +344,46 @@ fn test_put_with_larger_content_length() {
 }
 
 #[test]
+fn test_patch() {
+  boot_regular();
+  let request = b"PATCH /test HTTP/1.1\r\n\r\npatch";
+  let expected_response = b"Method: PATCH\nUri: /test\nParams: {}\nBody: \"patch\"";
+  run_regular(request, expected_response);
+}
+
+#[test]
+fn test_head() {
+  boot_regular();
+  let request = b"HEAD /test HTTP/1.1\r\n\r\n";
+  let expected_response = b"head";
+  run_regular(request, expected_response);
+}
+
+#[test]
+fn test_options() {
+  boot_regular();
+  let request = b"OPTIONS /test HTTP/1.1\r\n\r\n";
+  let expected_response = b"options";
+  run_regular(request, expected_response);
+}
+
+#[test]
+fn test_connect() {
+  boot_regular();
+  let request = b"CONNECT /test HTTP/1.1\r\n\r\n";
+  let expected_response = b"connect";
+  run_regular(request, expected_response);
+}
+
+#[test]
+fn test_trace() {
+  boot_regular();
+  let request = b"TRACE /test HTTP/1.1\r\n\r\n";
+  let expected_response = b"trace";
+  run_regular(request, expected_response);
+}
+
+#[test]
 fn test_delete() {
   boot_regular();
   let request = b"DELETE /test HTTP/1.1\r\n\r\n";
@@ -391,6 +468,14 @@ fn test_method_not_allowed() {
   boot_regular();
   let request = b"BREW /coffee HTTP/1.1\r\n\r\n";
   let expected_response = b"HTTP/1.1 405 Method Not Allowed";
+  run_regular(request, expected_response);
+}
+
+#[test]
+fn test_allowed_method_missing_route() {
+  boot_regular();
+  let request = b"TRACE /missing HTTP/1.1\r\n\r\n";
+  let expected_response = b"HTTP/1.1 404 Not Found";
   run_regular(request, expected_response);
 }
 

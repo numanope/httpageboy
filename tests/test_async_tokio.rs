@@ -20,7 +20,12 @@ async fn common_server_definition(server_url: &str) -> Server {
   server.add_route("/test/{param1}", Rt::POST, handler!(demo_handle_post));
   server.add_route("/test/{param1}/{param2}", Rt::POST, handler!(demo_handle_post));
   server.add_route("/test", Rt::PUT, handler!(demo_handle_put));
+  server.add_route("/test", Rt::PATCH, handler!(demo_handle_put));
   server.add_route("/test", Rt::DELETE, handler!(demo_handle_delete));
+  server.add_route("/test", Rt::HEAD, handler!(demo_handle_head));
+  server.add_route("/test", Rt::OPTIONS, handler!(demo_handle_options));
+  server.add_route("/test", Rt::CONNECT, handler!(demo_handle_connect));
+  server.add_route("/test", Rt::TRACE, handler!(demo_handle_trace));
   let res_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("res");
   server.add_files_source(res_path.to_str().unwrap());
   server
@@ -103,6 +108,38 @@ async fn demo_handle_delete(_request: &Request) -> Response {
     status: StatusCode::Ok.to_string(),
     content_type: String::new(),
     content: b"delete".to_vec(),
+  }
+}
+
+async fn demo_handle_head(_request: &Request) -> Response {
+  Response {
+    status: StatusCode::Ok.to_string(),
+    content_type: String::new(),
+    content: b"head".to_vec(),
+  }
+}
+
+async fn demo_handle_options(_request: &Request) -> Response {
+  Response {
+    status: StatusCode::Ok.to_string(),
+    content_type: String::new(),
+    content: b"options".to_vec(),
+  }
+}
+
+async fn demo_handle_connect(_request: &Request) -> Response {
+  Response {
+    status: StatusCode::Ok.to_string(),
+    content_type: String::new(),
+    content: b"connect".to_vec(),
+  }
+}
+
+async fn demo_handle_trace(_request: &Request) -> Response {
+  Response {
+    status: StatusCode::Ok.to_string(),
+    content_type: String::new(),
+    content: b"trace".to_vec(),
   }
 }
 
@@ -306,6 +343,51 @@ async fn test_put_with_larger_content_length() {
 }
 
 #[tokio::test]
+async fn test_patch() {
+  boot_regular().await;
+  let request = b"PATCH /test HTTP/1.1\r\n\r\npatch";
+  let expected = b"Method: PATCH\nUri: /test\nParams: {}\nBody: \"patch\"";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_regular(request, expected).await;
+}
+
+#[tokio::test]
+async fn test_head() {
+  boot_regular().await;
+  let request = b"HEAD /test HTTP/1.1\r\n\r\n";
+  let expected = b"head";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_regular(request, expected).await;
+}
+
+#[tokio::test]
+async fn test_options() {
+  boot_regular().await;
+  let request = b"OPTIONS /test HTTP/1.1\r\n\r\n";
+  let expected = b"options";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_regular(request, expected).await;
+}
+
+#[tokio::test]
+async fn test_connect() {
+  boot_regular().await;
+  let request = b"CONNECT /test HTTP/1.1\r\n\r\n";
+  let expected = b"connect";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_regular(request, expected).await;
+}
+
+#[tokio::test]
+async fn test_trace() {
+  boot_regular().await;
+  let request = b"TRACE /test HTTP/1.1\r\n\r\n";
+  let expected = b"trace";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_regular(request, expected).await;
+}
+
+#[tokio::test]
 async fn test_delete() {
   boot_regular().await;
   let request = b"DELETE /test HTTP/1.1\r\n\r\n";
@@ -400,6 +482,15 @@ async fn test_method_not_allowed() {
   boot_regular().await;
   let request = b"BREW /coffee HTTP/1.1\r\n\r\n";
   let expected = b"HTTP/1.1 405 Method Not Allowed";
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  run_regular(request, expected).await;
+}
+
+#[tokio::test]
+async fn test_allowed_method_missing_route() {
+  boot_regular().await;
+  let request = b"TRACE /missing HTTP/1.1\r\n\r\n";
+  let expected = b"HTTP/1.1 404 Not Found";
   tokio::time::sleep(std::time::Duration::from_millis(100)).await;
   run_regular(request, expected).await;
 }
